@@ -222,31 +222,42 @@ def test_3d_shapes():
 def test_wcsxform_001_returns_empty_family_for_list_inputs_origin_0():
     """
     WCSXFORM-001
-    Verify placeholder: no exception for fully empty list inputs at origin 0.
+    Verify empty per-axis return family when all required axes are empty.
     """
     w = wcs.WCS(naxis=2)
-    w.wcs_pix2world([], [], 0)
-    assert True
+    x, y = w.wcs_pix2world([], [], 0)
+    assert len(x) == 0
+    assert len(y) == 0
+    assert x.shape == (0,)
+    assert y.shape == (0,)
 
 
 def test_wcsxform_001_returns_empty_family_for_list_inputs_origin_1():
     """
     WCSXFORM-001
-    Verify placeholder: no exception for fully empty list inputs at origin 1.
+    Verify empty per-axis return family when all required axes are empty.
     """
     w = wcs.WCS(naxis=2)
-    w.wcs_pix2world([], [], 1)
-    assert True
+    x, y = w.wcs_pix2world([], [], 1)
+    assert len(x) == 0
+    assert len(y) == 0
+    assert x.shape == (0,)
+    assert y.shape == (0,)
 
 
 def test_wcsxform_001_returns_empty_family_for_numpy_empty_axes_origin_0():
     """
     WCSXFORM-001
-    Verify placeholder: no exception for zero-length ndarray inputs at origin 0.
+    Verify empty per-axis return family when all required axes are zero-length.
     """
     w = wcs.WCS(naxis=2)
-    w.wcs_pix2world(np.array([]), np.array([]), 0)
-    assert True
+    x = np.array([])
+    y = np.array([])
+    xw, yw = w.wcs_pix2world(x, y, 0)
+    assert len(xw) == 0
+    assert len(yw) == 0
+    assert xw.shape == x.shape
+    assert yw.shape == y.shape
 
 
 def test_preserve_shape():

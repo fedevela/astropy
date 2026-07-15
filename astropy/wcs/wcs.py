@@ -1227,16 +1227,14 @@ reduce these to 2 dimensions using the naxis kwarg.
         #    errors) for malformed/mismatched/partially-empty input as currently.
 
         def _return_list_of_arrays(axes, origin):
-            # [GUID: WCSXFORM-001] Empty-axis fast path (per-axis family):
-            # IF all axes are present for the required dimensions AND all sizes are 0:
-            #   THEN return [np.empty(shape_of_axis)] * naxis (current per-axis family).
-            # ELSE:
-            #   continue with broadcast, hstack, and core-function transform.
             try:
                 axes = np.broadcast_arrays(*axes)
             except ValueError:
                 raise ValueError(
                     "Coordinate arrays are not broadcastable to each other")
+
+            if all(axis.size == 0 for axis in axes):
+                return [np.empty(axis.shape, dtype=float) for axis in axes]
 
             xy = np.hstack([x.reshape((x.size, 1)) for x in axes])
 
@@ -1251,16 +1249,14 @@ reduce these to 2 dimensions using the naxis kwarg.
                     for i in range(output.shape[1])]
 
         def _return_single_array(xy, origin):
-            # [GUID: WCSXFORM-001] Empty NxN-array family:
-            # IF xy has zero rows:
-            #   return empty(nx=0, nelem=naxis) in the same "single-array"
-            #   return-family and skip lower-level transform call.
-            # ELSE:
-            #   keep existing shape/value checks, then transform.
             if xy.shape[-1] != self.naxis:
                 raise ValueError(
                     "When providing two arguments, the array must be "
                     "of shape (N, {0})".format(self.naxis))
+
+            if xy.shape[0] == 0:
+                return np.empty((0, self.naxis))
+
             if ra_dec_order and sky == 'input':
                 xy = self._denormalize_sky(xy)
             result = func(xy, origin)
