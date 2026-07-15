@@ -60,6 +60,16 @@ def _line_type(line, delimiter=None):
     ValueError: Unrecognized QDP line...
     """
     _decimal_re = r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?"
+
+    # ISSUE13-001: logic contract for case-insensitive dispatch routing.
+    # Decision branch required:
+    # 1) Trim line and classify empty line as "comment".
+    # 2) Attempt command parse against the command pattern where command verb
+    #    and command sub-key are compared case-insensitively.
+    # 3) For accepted command forms (READ + [TS]ERR + columns),
+    #    route to command handling path.
+    # 4) For NO/NO,... and data patterns, route to "new"/"data" paths.
+    # 5) Otherwise fail with Unrecognized QDP line (existing failure path).
     _command_re = r"READ [TS]ERR(\s+[0-9]+)+"
 
     sep = delimiter
@@ -297,6 +307,13 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
                     # This should never happen, but just in case.
                     if len(command) < 3:
                         continue
+                    # ISSUE13-001: logic contract for sub-key case handling.
+                    # Branch on normalized command key, not raw token casing.
+                    # 1) canonical_key = command[1].lower()
+                    # 2) if canonical_key == "serr" => err_specs["serr"] = columns
+                    # 3) if canonical_key == "terr" => err_specs["terr"] = columns
+                    # 4) otherwise preserve existing behavior (no new accept/reject path)
+                    # 5) column list remains int(token) for each position token.
                     err_specs[command[1].lower()] = [int(c) for c in command[2:]]
             if colnames is None:
                 colnames = _interpret_err_lines(err_specs, ncol, names=input_colnames)
