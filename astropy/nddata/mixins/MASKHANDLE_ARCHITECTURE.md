@@ -1,4 +1,4 @@
-# MASKHANDLE-001 to MASKHANDLE-005 Architecture Artifact
+# MASKHANDLE-001 to MASKHANDLE-006 Architecture Artifact
 
 ## Scope
 Issue family: keep `NDArithmeticMixin` behavior stable for
@@ -34,6 +34,16 @@ mixed-mask-vs-mask correction to its owning seam.
       `_arithmetic_meta` as unchanged-seams.
   - `astropy/nddata/mixins/tests/test_ndarithmetic.py`
     - `MASKHANDLE_005...` regression artifact.
+- `MASKHANDLE-006`
+  - `astropy/nddata/mixins/ndarithmetic.py`
+    - `_arithmetic` mixed-mask execution path for multiply/non-multiply operator
+      dispatch and operand order determinism.
+    - `_arithmetic_mask` one-present-mask selection contract (`deepcopy(non_none_mask)`).
+  - `astropy/nddata/mixins/tests/test_ndarithmetic.py`
+    - `MASKHANDLE_006...` regression artifacts:
+      - `test_MASKHANDLE_006_scalar_multiply_uses_mixed_mask_operand_output_for_handle_mask_bitwise_or`
+      - `test_MASKHANDLE_006_multiply_ordered_mixed_mask_no_typeerror_handle_mask_bitwise_or`
+      - `test_MASKHANDLE_006_add_mixed_mask_preserves_deterministic_output_mask_with_bitwise_or`
 
 ## Ownership and boundary decisions
 
@@ -41,11 +51,17 @@ mixed-mask-vs-mask correction to its owning seam.
   - Chooses handling mode (`None`, `ff`, callable).
   - Owns boundaries into `kwargs` assembly (data/uncertainty/WCS/meta assembly
     already delegated).
-  - Policy adjustment for this issue is limited to the mixed-mask branch.
+  - Policy adjustment for this issue is limited to the mixed-mask branch and
+    must preserve non-mixed behavior.
 - `NDArithmeticMixin._arithmetic_mask` owns **mask composition contract**:
   - Input boundary: `self.mask`, `operand.mask`, `handle_mask`, `kwds`.
   - Output boundary: `None`, deep-copied mask, or composed mask.
   - Non-mixed branches remain contract-fixed.
+- `MASKHANDLE-006` ownership extension:
+  - `_arithmetic` owns deterministic mixed-mask dispatch shape: scalar multiply,
+    left-right order symmetry, and non-multiply operator extension.
+  - `_arithmetic_mask` remains the canonical source for mixed-state (exactly-one-present)
+    behavior across all operators.
 
 ## Interfaces / contracts
 
@@ -61,6 +77,15 @@ mixed-mask-vs-mask correction to its owning seam.
   - Inputs: both masks present.
   - Output: `handle_mask(self.mask, operand.mask, **kwds)`.
   - Pressure: `MASKHANDLE-004`.
+- Contract D: mixed-mask single-present invariance with bitwise_or
+  - Inputs: `handle_mask=np.bitwise_or`, exactly one operand has mask.
+  - Output: deep-copied present mask (`M`) and deterministic (exception-free) path.
+  - Pressure: `MASKHANDLE-006` (O1, O2).
+- Contract E: non-multiply mixed-mask invariance
+  - Inputs: one-present-mask state plus `handle_mask=np.bitwise_or` with non-multiply
+    operator (`add`/`subtract`/`divide`).
+  - Output: same present-mask invariant and no `TypeError`.
+  - Pressure: `MASKHANDLE-006` (O3).
 
 ## Dependency direction
 
@@ -70,6 +95,9 @@ mixed-mask-vs-mask correction to its owning seam.
   `_arithmetic_meta` (one-way).
   - These are intentionally untouched by `MASKHANDLE-003`/`004`/`005`.
 - `test_ndarithmetic` → `ndarithmetic` (test-to-implementation traceability).
+- `MASKHANDLE-006` seam dependency:
+  - all three new regression paths must pass through the same two-seam chain:
+    `_arithmetic` operand dispatch → `_arithmetic_mask` state transition.
 
 ## Integration-seam skeleton
 
@@ -80,11 +108,17 @@ mixed-mask-vs-mask correction to its owning seam.
 - Non-mixed preservation seam
   - Marker seam across `_arithmetic_data`, `_arithmetic_uncertainty`,
     `_arithmetic_wcs`, `_arithmetic_meta` to ensure no behavior drift.
+- `MASKHANDLE-006` mixed-mask seam extension
+  - Expand test-anchored operators for this requirement:
+    - scalar `multiply(1., handle_mask=np.bitwise_or)`
+    - mixed `multiply` both operand orders with one mask
+    - one non-multiply operator mixed-mask path with `handle_mask=np.bitwise_or`
+  - Keep uncertainty/WCS/meta/data untouched; contract only at mask seam.
 
 ## Completion status
 
 - Requirement homes are assigned to owning files and boundaries.
 - Architecture now records the precise mixed-mask mutation boundary and explicitly
   seals non-mixed behavior paths.
-- Traceability is preserved through canonical map entries and placeholder test
-  artifacts.
+- Traceability is preserved through canonical map entries, contracts, and placeholder
+  test artifacts for `MASKHANDLE-006`.
