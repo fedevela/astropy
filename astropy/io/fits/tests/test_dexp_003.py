@@ -5,6 +5,7 @@
 """Architecture-suitable traceability for DEXP-003."""
 
 import io
+import re
 
 import numpy as np
 
@@ -232,12 +233,9 @@ class TestDEXP003Traceability(FitsTestCase):
         payload = self._table_payload(hdu)
         row = self._first_ascii_data_line(payload)
 
-        # TODO(DEXP-003): assert payload row uses D and not E once implementation is complete.
-        # Pseudocode decision:
-        # IF "D" in row AND "E" not in row:
-        #     PASS
-        # ELSE:
-        #     FAIL legacy_exponent_not_replaced
+        assert "D" in row
+        assert re.search(r"D[+-]\d\d", row)
+        assert "E" not in row
 
     def test_dexp_003_negative_exponent_raw_row_contains_d_separator(self):
         """
@@ -254,12 +252,9 @@ class TestDEXP003Traceability(FitsTestCase):
         payload = self._table_payload(hdu)
         row = self._first_ascii_data_line(payload)
 
-        # TODO(DEXP-003): assert payload row uses D for negative exponent path once implementation is complete.
-        # Pseudocode decision:
-        # IF "D" in row AND "E" not in row:
-        #     PASS
-        # ELSE:
-        #     FAIL legacy_exponent_not_replaced
+        assert "D" in row
+        assert re.search(r"D[+-]\d\d", row)
+        assert "E" not in row
 
     def test_dexp_003_regression_observes_e_when_d_not_replaced(self):
         """
@@ -274,9 +269,8 @@ class TestDEXP003Traceability(FitsTestCase):
         payload = self._table_payload(hdu)
         row = self._first_ascii_data_line(payload)
 
-        # TODO(DEXP-003): replace with an explicit negative assertion for legacy E output during implementation.
-        # Pseudocode decision:
-        # IF "E" in row:
-        #     PASS legacy_regression_observed
-        # ELSE:
-        #     FAIL: current test fixture no longer captures pre-fix behavior
+        # If the unassigned-replace behavior were still active, the exponent
+        # marker on this row would appear as 'E' instead of 'D'.
+        assert "D" in row
+        assert "E" not in row
+        assert re.search(r"1\.2345000D\+20", row)
