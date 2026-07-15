@@ -187,12 +187,32 @@ def test_AST12907_001_nested_compound_no_false_cross_dependency_inflation():
 
 def test_AST12907_002_nested_pix2sky_tan_nested_linear1d_block_false_coupling_positions():
     """Requirement AST12907-002, Scenario 1: nested linear outputs remain independent under preceding `Pix2Sky_TAN`."""
-    assert True
+    model = models.Pix2Sky_TAN() & (models.Linear1D(10) & models.Linear1D(5))
+    matrix = separability_matrix(model)
+    expected = np.array([[1, 1, 0, 0],
+                         [1, 1, 0, 0],
+                         [0, 0, 1, 0],
+                         [0, 0, 0, 1]])
+
+    assert_allclose(matrix, expected)
+    assert not matrix[2, 3]
+    assert not matrix[3, 2]
 
 
 def test_AST12907_002_nested_pix2sky_tan_and_flattened_pair_equivalent_blocked_matrix():
     """Requirement AST12907-002, Scenario 2: nested pair stays equivalent to flattened form with independent linear block."""
-    assert True
+    nested = models.Pix2Sky_TAN() & (models.Linear1D(10) & models.Linear1D(5))
+    flattened = models.Pix2Sky_TAN() & models.Linear1D(10) & models.Linear1D(5)
+    nested_matrix = separability_matrix(nested)
+    flattened_matrix = separability_matrix(flattened)
+    expected = np.array([[1, 1, 0, 0],
+                         [1, 1, 0, 0],
+                         [0, 0, 1, 0],
+                         [0, 0, 0, 1]])
+
+    assert_allclose(nested_matrix, flattened_matrix)
+    assert_allclose(nested_matrix, expected)
+    assert_allclose(nested_matrix[2:4, 2:4], np.eye(2))
 
 
 # Contract-traceability mapping for traceability audits.
