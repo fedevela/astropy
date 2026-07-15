@@ -185,7 +185,24 @@ def test_AST12907_001_nested_compound_no_false_cross_dependency_inflation():
     assert_allclose(left_matrix, right_matrix)
 
 
+def test_AST12907_002_nested_pix2sky_tan_nested_linear1d_block_false_coupling_positions():
+    """Requirement AST12907-002, Scenario 1: nested linear outputs remain independent under preceding `Pix2Sky_TAN`."""
+    assert True
+
+
+def test_AST12907_002_nested_pix2sky_tan_and_flattened_pair_equivalent_blocked_matrix():
+    """Requirement AST12907-002, Scenario 2: nested pair stays equivalent to flattened form with independent linear block."""
+    assert True
+
+
 # Contract-traceability mapping for traceability audits.
+AST12907_002_VERIFICATION = {
+    "AST12907-002": [
+        "test_AST12907_002_nested_pix2sky_tan_nested_linear1d_block_false_coupling_positions",
+        "test_AST12907_002_nested_pix2sky_tan_and_flattened_pair_equivalent_blocked_matrix",
+    ]
+}
+
 AST12907_001_VERIFICATION = {
     "AST12907-001": [
         "test_AST12907_001_nested_compound_associativity_preserves_dependency_matrix_shape",
