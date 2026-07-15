@@ -1210,8 +1210,28 @@ reduce these to 2 dimensions using the naxis kwarg.
         A helper function to support reading either a pair of arrays
         or a single Nx2 array.
         """
+        # [GUID: WCSXFORM-001]
+        # Logic obligation:
+        # 1) Normalize caller inputs into one of two legal families:
+        #    a) single NxN array + origin, or b) one array per axis + origin.
+        # 2) Preserve existing return-family semantics for empty inputs:
+        #    - NxN input: return zero-row NxN transformed array.
+        #    - Per-axis input: return one empty array per required axis.
+        # 3) For fully-empty per-axis inputs only when all required axes are empty:
+        #    - detect zero-length after coercion and broadcasting checks;
+        #    - bypass low-level WCS kernel call to avoid axis-type conversion path.
+        # 4) On empty detection, short-circuit with a successful empty output
+        #    shaped to the requested family and return.
+        # 5) On non-empty input, use current conversion + WCS call flow unchanged.
+        # 6) Preserve existing exceptions (ValueError/TypeError/inconsistent axis
+        #    errors) for malformed/mismatched/partially-empty input as currently.
 
         def _return_list_of_arrays(axes, origin):
+            # [GUID: WCSXFORM-001] Empty-axis fast path (per-axis family):
+            # IF all axes are present for the required dimensions AND all sizes are 0:
+            #   THEN return [np.empty(shape_of_axis)] * naxis (current per-axis family).
+            # ELSE:
+            #   continue with broadcast, hstack, and core-function transform.
             try:
                 axes = np.broadcast_arrays(*axes)
             except ValueError:
@@ -1231,6 +1251,12 @@ reduce these to 2 dimensions using the naxis kwarg.
                     for i in range(output.shape[1])]
 
         def _return_single_array(xy, origin):
+            # [GUID: WCSXFORM-001] Empty NxN-array family:
+            # IF xy has zero rows:
+            #   return empty(nx=0, nelem=naxis) in the same "single-array"
+            #   return-family and skip lower-level transform call.
+            # ELSE:
+            #   keep existing shape/value checks, then transform.
             if xy.shape[-1] != self.naxis:
                 raise ValueError(
                     "When providing two arguments, the array must be "
@@ -1349,6 +1375,14 @@ reduce these to 2 dimensions using the naxis kwarg.
     def wcs_pix2world(self, *args, **kwargs):
         if self.wcs is None:
             raise ValueError("No basic WCS settings were created.")
+        # [GUID: WCSXFORM-001]
+        # Control-flow obligation:
+        #   - Input validation and empty-input branching remain delegated to _array_converter.
+        #   - For fully-empty axis inputs (both required axes empty for naxis==2, and
+        #     equivalently all required axes for naxis>2), execution must return the
+        #     existing per-axis/family-shaped empty container and complete with no
+        #     InconsistentAxisTypesError.
+        #   - Non-empty behavior must remain unchanged.
         return self._array_converter(
             lambda xy, o: self.wcs.p2s(xy, o)['world'],
             'output', *args, **kwargs)
