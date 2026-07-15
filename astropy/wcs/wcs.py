@@ -1212,6 +1212,19 @@ reduce these to 2 dimensions using the naxis kwarg.
         """
 
         def _return_list_of_arrays(axes, origin):
+            # WCS-001: obligation trace -> empty-per-axis inputs must be treated as a
+            # zero-point input set across all supported call styles.
+            # 1) Decision: after argument coercion, compute effective point count.
+            #    If every axis array is empty, remaining shape contract is derived from each
+            #    input axis (e.g. `axes[i].shape`), not by fabricated coordinates.
+            # 2) Transition:
+            #    - Input state: list-of-axis arrays accepted by array-converter.
+            #    - Empty state: no elements in any axis vector.
+            #    - Output state: one empty world-vector per axis, preserving shape.
+            # 3) Failure-path control:
+            #    - In the empty state, do not call wcslib (`func`) or sky-normalization
+            #      branches because those can emit InconsistentAxisTypesError.
+            #    - In non-empty state, continue through existing broadcast and transform.
             try:
                 axes = np.broadcast_arrays(*axes)
             except ValueError:
@@ -1231,6 +1244,14 @@ reduce these to 2 dimensions using the naxis kwarg.
                     for i in range(output.shape[1])]
 
         def _return_single_array(xy, origin):
+            # WCS-001: single-array call form with Nx0 payload is equivalent to the
+            # same zero-point output contract.
+            # 1) Decision: if `xy.shape[0] == 0` with compatible axis width, route to
+            #    explicit empty-output handling (shape (0, naxis) through return path).
+            # 2) State: no insertion of synthetic coordinates; preserve input-origin semantics.
+            # 3) Failure handling:
+            #    - Invalid axis-width inputs still raise shape ValueError.
+            #    - Empty-valid shape should remain a no-op transformation, not an error.
             if xy.shape[-1] != self.naxis:
                 raise ValueError(
                     "When providing two arguments, the array must be "
