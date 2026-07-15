@@ -333,7 +333,11 @@ def test_wcsxform_003_wcs_pix2world_axis_count_mismatch_with_empty_axis_raises_s
     obligation: preserve existing validation for mixed empty/non-empty axis inputs in
     `wcs_pix2world`, including the `wcs_pix2world([], [1.0], 0)` shape-mismatch class.
     """
-    assert True
+    w = wcs.WCS(naxis=2)
+
+    with pytest.raises(ValueError) as exc:
+        w.wcs_pix2world([], [1.0], 0)
+    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
 
 
 def test_wcsxform_003_wcs_world2pix_one_axis_empty_one_non_empty_preserves_malformed_shape_behavior():
@@ -342,7 +346,11 @@ def test_wcsxform_003_wcs_world2pix_one_axis_empty_one_non_empty_preserves_malfo
     obligation: preserve existing validation behavior for helper-path transforms requiring
     2 axes when one axis is empty and the other is non-empty.
     """
-    assert True
+    w = wcs.WCS(naxis=2)
+
+    with pytest.raises(ValueError) as exc:
+        w.wcs_world2pix([], [1.0], 1)
+    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
 
 
 def test_wcsxform_003_all_world2pix_mixed_empty_non_empty_alignment_path_rejects_empty_success_branch():
@@ -351,7 +359,11 @@ def test_wcsxform_003_all_world2pix_mixed_empty_non_empty_alignment_path_rejects
     obligation: preserve alignment-required failure mode for mixed empty/non-empty inputs and
     avoid introducing empty-input success semantics.
     """
-    assert True
+    w = wcs.WCS(naxis=3)
+
+    with pytest.raises(ValueError) as exc:
+        w.all_world2pix([], [], [1.0], 1)
+    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
 
 
 def test_preserve_shape():

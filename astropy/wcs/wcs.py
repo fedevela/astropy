@@ -1252,8 +1252,14 @@ reduce these to 2 dimensions using the naxis kwarg.
 
         def _return_list_of_arrays(axes, origin):
             try:
+                original_sizes = [axis.size for axis in axes]
                 axes = np.broadcast_arrays(*axes)
             except ValueError:
+                raise ValueError(
+                    "Coordinate arrays are not broadcastable to each other")
+
+            if any(size == 0 for size in original_sizes) and \
+               any(size > 0 for size in original_sizes):
                 raise ValueError(
                     "Coordinate arrays are not broadcastable to each other")
 
