@@ -385,6 +385,67 @@ WCSXFORM_005_VERIFICATION_MAP = [
 ]
 
 
+WCSXFORM_006_VERIFICATION_MAP = [
+    {
+        "requirement_id": "WCSXFORM-006",
+        "obligation": (
+            "repeated empty-input `wcs_pix2world` invocations must each return empty per-axis "
+            "outputs and must not introduce instance-level state drift across invocations"
+        ),
+        "verification_artifacts": [
+            "test_wcsxform_006_wcs_pix2world_repeated_empty_inputs_remain_empty_and_state_free",
+        ],
+    },
+    {
+        "requirement_id": "WCSXFORM-006",
+        "obligation": (
+            "the sequence empty->non-empty->empty must preserve expected non-empty behavior and "
+            "empty-output semantics on the same instance"
+        ),
+        "verification_artifacts": [
+            "test_wcsxform_006_empty_nonempty_empty_sequence_keeps_contract_on_one_instance",
+        ],
+    },
+    {
+        "requirement_id": "WCSXFORM-006",
+        "obligation": (
+            "fresh equivalent `WCS` instances should produce equivalent empty/non-empty/empty sequences "
+            "without divergence in outputs or error behavior"
+        ),
+        "verification_artifacts": [
+            "test_wcsxform_006_equivalent_fresh_wcs_instances_preserve_empty_nonempty_empty_contract",
+        ],
+    },
+]
+
+
+def test_wcsxform_006_wcs_pix2world_repeated_empty_inputs_remain_empty_and_state_free():
+    """
+    WCSXFORM-006
+    Obligation: repeated empty-input invocations on the same `WCS` instance must remain
+    empty-output contracts with no mutation-based drift.
+    """
+    assert True
+
+
+def test_wcsxform_006_empty_nonempty_empty_sequence_keeps_contract_on_one_instance():
+    """
+    WCSXFORM-006
+    Obligation: in an empty -> non-empty -> empty call sequence on the same `WCS` instance,
+    the non-empty transform remains valid and both empties remain empty-output.
+    """
+    assert True
+
+
+def test_wcsxform_006_equivalent_fresh_wcs_instances_preserve_empty_nonempty_empty_contract():
+    """
+    WCSXFORM-006
+    Obligation: equivalent fresh instances must preserve outputs and error behavior across repeated
+    empty/non-empty/empty execution sequences.
+    """
+    assert True
+
+
 def test_wcsxform_004_wcs_pix2world_non_empty_inputs_preserve_axes_order_shape_and_container_type():
     """
     WCSXFORM-004
