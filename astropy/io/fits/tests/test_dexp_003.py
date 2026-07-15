@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Traceability test skeleton for DEXP-003."""
+"""Architecture-suitable traceability for DEXP-003."""
 
 import io
 
@@ -25,10 +25,23 @@ DEXP_003_VERIFICATION = {
 DEXP_003_ARCHITECTURE = {
     "DEXP-003": {
         "topology": [
+            "astropy/io/fits/fitsrec.py::TableData::_scale_back_ascii",
             "astropy/io/fits/hdu/table.py::_TableBaseHDU::_prewriteto",
             "astropy/io/fits/hdu/table.py::TableHDU::_writedata_internal",
-            "astropy/io/fits/fitsrec.py::TableData::_scale_back_ascii",
+            "astropy/io/fits/hdu/table.py::TableHDU::_calculate_datasum",
         ],
+        "ownership": {
+            "module": {
+                "serialization_normalization": "astropy/io/fits/fitsrec.py",
+                "payload_stage": "astropy/io/fits/hdu/table.py",
+            },
+            "boundary": [
+                "TableData::_scale_back_ascii owns per-field normalization for ASCII D-formatted "
+                "float payload bytes and is the only locus that can change exponent glyphs from E to D.",
+                "TableHDU serialization stage owns byte-stream emission and must consume normalized bytes from `_scale_back`.",
+                "Trace assertions must stay in test-layer helpers and must not introduce parser side effects.",
+            ],
+        },
         "contracts": {
             "positive_exponent_path": (
                 "A float field declared with format containing D serializes through "
@@ -44,9 +57,70 @@ DEXP_003_ARCHITECTURE = {
                 "inputs would include E when D replacement is not applied."
             ),
         },
+        "dependency_direction": [
+            "TableData::_scale_back_ascii -> _TableBaseHDU::_prewriteto (normalized bytes produced before HDU payload emission).",
+            "_TableBaseHDU::_prewriteto -> TableHDU::_writedata_internal (writer consumes staged bytes).",
+            "_writedata_internal -> _calculate_datasum (shared data-source expectation for write/checksum parity).",
+        ],
+        "integration_seams": {
+            "serialization": {
+                "producer": "TableData::_scale_back_ascii",
+                "transformer": "TableHDU::_prewriteto",
+                "consumer": "TableHDU::_writedata_internal",
+                "contract": (
+                    "The D-exponent marker decision must be resolved before stream emission "
+                    "and never rerouted through a secondary local buffer."
+                ),
+            },
+            "verification_surface": {
+                "producer": "table serialization helper in tests",
+                "transformer": "raw-bytes extraction helper",
+                "consumer": "raw row assertion branches",
+                "contract": (
+                    "Regression verification must operate on raw ASCII payload bytes, immediately "
+                    "after END, to detect pre-fix E emission."
+                ),
+            },
+        },
+        "readiness": {
+            "owner_homogeneity": "true",
+            "boundary_stability": "true",
+            "dependency_graph_single_source": "true",
+            "verification_surface_bound": "true",
+        },
         "verification": DEXP_003_VERIFICATION["DEXP-003"],
     }
 }
+
+DEXP_003_ARCHITECTURE_PLACEMENT = [
+    {
+        "requirement": "DEXP-003",
+        "obligation": "positive_exponent_raw_row_contains_d_separator",
+        "pressure": "boundary & contract",
+        "owning_artifact": "astropy/io/fits/tests/test_dexp_003.py",
+        "handoff_boundary": "TableData::_scale_back_ascii -> TableHDU::_prewriteto",
+        "adapter": "_table_payload",
+        "verification_seam": "raw ASCII row extraction immediately after END",
+    },
+    {
+        "requirement": "DEXP-003",
+        "obligation": "negative_exponent_raw_row_contains_d_separator",
+        "pressure": "boundary & contract",
+        "owning_artifact": "astropy/io/fits/tests/test_dexp_003.py",
+        "handoff_boundary": "TableData::_scale_back_ascii -> TableHDU::_prewriteto",
+        "adapter": "_table_payload",
+        "verification_seam": "raw ASCII row extraction immediately after END",
+    },
+    {
+        "requirement": "DEXP-003",
+        "obligation": "regression_observes_e_when_d_not_replaced",
+        "pressure": "failure-surface scaffolding",
+        "owning_artifact": "astropy/io/fits/tests/test_dexp_003.py",
+        "handoff_boundary": "writer output -> test-row scanner",
+        "adapter": "_first_ascii_data_line",
+        "verification_seam": "legacy expectation observation branch (temporary until implementation gate)",
+    },
+]
 
 
 DEXP_003_PSEUDOCODE = {
@@ -99,7 +173,7 @@ DEXP_003_PSEUDOCODE = {
 
 
 class TestDEXP003Traceability(FitsTestCase):
-    """Contract-oriented placeholder coverage for DEXP-003."""
+    """Contract-oriented placement and boundary artifact for DEXP-003."""
 
     @staticmethod
     def _table_payload(hdu):
