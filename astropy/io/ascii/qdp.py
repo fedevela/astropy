@@ -72,6 +72,9 @@ def _line_type(line, delimiter=None):
     # ISSUE13-001: command token matching must be case-insensitive for both
     # verb (READ) and key (SERR/TERR) while preserving all previous routing
     # behavior.
+    # ISSUE13-002: pseudocode branch:
+    # - classify command lines with case-insensitive matching for READ/SERR/TERR.
+    # - preserve downstream token-type outcomes independent of lexical case.
     _line_type_re = re.compile(_type_re, flags=re.IGNORECASE)
     line = line.strip()
     if not line:
@@ -204,6 +207,10 @@ def _interpret_err_lines(err_specs, ncols, names=None):
 
         serr_cols = err_specs.pop("serr", [])
         terr_cols = err_specs.pop("terr", [])
+    # ISSUE13-002: pseudocode branch:
+    # - interpret canonicalized `serr`/`terr` indices deterministically.
+    # - emit base column then `_err` or `_perr`/`_nerr` columns.
+    # - keep this mapping identical for mixed-case and uppercase command input.
 
     if names is not None:
         all_error_cols = len(serr_cols) + len(terr_cols) * 2
@@ -279,6 +286,9 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
             continue
 
         if datatype == "command":
+            # ISSUE13-002: pseudocode branch:
+            # - store command lines as read, without transforming case.
+            # - preserve comment handoff and existing multiple-command warning.
             # The first time I find commands, I save whatever comments into
             # The initial comments.
             if command_lines == "":
@@ -296,6 +306,13 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
         if datatype.startswith("data"):
             # The first time I find data, I define err_specs
             if err_specs == {} and command_lines != "":
+                # ISSUE13-002: pseudocode branch:
+                # - tokenize each captured command line.
+                # - if token count < 3, ignore as malformed/no-op.
+                # - normalize sub-key via lower() before comparing serr/terr.
+                # - parse indices as integers to build canonical `err_specs`.
+                # - canonical `err_specs` must be identical for mixed-case or
+                #   uppercase READ SERR/TERR commands.
                 for cline in command_lines.strip().split("\n"):
                     command = cline.strip().split()
                     # This should never happen, but just in case.
@@ -312,6 +329,10 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
                 current_rows = []
 
             values = []
+            # ISSUE13-002: pseudocode branch:
+            # - parse row tokens in order using delimiter.
+            # - convert NO => masked, else parse as int then float.
+            # - semantics and output values are case-independent.
             for v in line.split(delimiter):
                 if v == "NO":
                     values.append(np.ma.masked)
@@ -425,6 +446,9 @@ def _read_table_qdp(qdp_file, names=None, table_id=None, delimiter=None):
     tables = _get_tables_from_qdp_file(
         qdp_file, input_colnames=names, delimiter=delimiter
     )
+    # ISSUE13-002: pseudocode branch:
+    # - selection contract: return `tables[table_id]` from parser output.
+    # - parsing invariants from mixed/lower-case READ SERR are enforced upstream.
 
     return tables[table_id]
 
