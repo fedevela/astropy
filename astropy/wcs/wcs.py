@@ -1249,6 +1249,21 @@ reduce these to 2 dimensions using the naxis kwarg.
         #     mixed-empty inputs must not produce success even when one axis is zero-length.
         # V4: Empty behavior is local (return-family shape) and must not alter exception
         #     type/message semantics expected by legacy malformed-shape callers.
+        # [GUID: WCSXFORM-004]
+        # Non-empty regression obligation:
+        # O1: Preserve non-empty output contracts exactly:
+        #     - input branch selection stays based on `len(args)` and shape checks only.
+        #     - for len(args) == 2, transformation result is forwarded as-is after
+        #       optional sky normalization; no axis-reordering or return-shape edits.
+        #     - for len(args) == naxis + 1, output columns are emitted in axis index order:
+        #       output[:, i] for i in [0..naxis-1], then reshaped to the aligned broadcast shape.
+        # O2: Preserve container family and axis-order invariants under mixed valid signatures:
+        #     - scalar signature → ndarray result path.
+        #     - per-axis signature → list of per-axis arrays, no tuple/ndarray substitution.
+        #     - NxN signature → ndarray with unchanged `(N, naxis)` structure.
+        # O3: Only empty-input short-circuits are allowed to alter control flow;
+        #     all non-empty calls must execute the same conversion + transform + reshape
+        #     sequence as pre-fix behavior.
 
         def _return_list_of_arrays(axes, origin):
             try:
@@ -1265,6 +1280,12 @@ reduce these to 2 dimensions using the naxis kwarg.
 
             if all(axis.size == 0 for axis in axes):
                 return [np.empty(axis.shape, dtype=float) for axis in axes]
+
+            # [GUID: WCSXFORM-004]
+            # Non-empty mixed-container mapping:
+            # - all axes non-empty after broadcast => emit one output container per input axis.
+            # - preserve axis order via sequential i-index extraction from transformed matrix.
+            # - preserve shape by reshaping each extracted column to `axes[0].shape`.
 
             xy = np.hstack([x.reshape((x.size, 1)) for x in axes])
 
@@ -1286,6 +1307,12 @@ reduce these to 2 dimensions using the naxis kwarg.
 
             if xy.shape[0] == 0:
                 return np.empty((0, self.naxis))
+
+            # [GUID: WCSXFORM-004]
+            # Non-empty single-array mapping:
+            # - keep two-argument input semantics unchanged.
+            # - no conditional transforms or retyping occur here except optional sky normalization.
+            # - return type is always the backend function result with existing ndarray shape/order.
 
             if ra_dec_order and sky == 'input':
                 xy = self._denormalize_sky(xy)
@@ -1428,6 +1455,16 @@ reduce these to 2 dimensions using the naxis kwarg.
         # 2) Delegate to _array_converter with wcslib core transform.
         # 3) If helper detects all required-axis empties -> return zero-length result.
         # 4) If helper raises axis consistency errors, propagate as before.
+        # [GUID: WCSXFORM-004][Obligation 1]
+        # Non-empty compatibility gate:
+        # 1) For scalar, tuple/list-of-scales, and array signatures with no empty-axis
+        #    success path, do not add pre/post conversion branches.
+        # 2) Keep delegation target and callable identity exactly:
+        #    `lambda xy, o: self.wcs.p2s(xy, o)['world']`.
+        # 3) Let `_array_converter` enforce all shape/broadcast/return-structure behavior.
+        # 4) The returned value must be structurally identical to prior behavior:
+        #    same axis ordering, same container class, and same shape for all valid non-empty
+        #    test-covered calls.
         return self._array_converter(
             lambda xy, o: self.wcs.p2s(xy, o)['world'],
             'output', *args, **kwargs)
