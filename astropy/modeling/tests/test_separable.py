@@ -152,12 +152,37 @@ def test_custom_model_separable():
 
 def test_AST12907_001_nested_compound_associativity_preserves_dependency_matrix_shape():
     """Requirement AST12907-001, Scenario 1: A&(B&C) and (A&B)&C yield identical matrix."""
-    assert True
+    left_nested = models.Shift(1) & (models.Shift(2) & models.Shift(3))
+    right_nested = (models.Shift(1) & models.Shift(2)) & models.Shift(3)
+
+    left_matrix = separability_matrix(left_nested)
+    right_matrix = separability_matrix(right_nested)
+    expected = np.array([[True, False, False],
+                         [False, True, False],
+                         [False, False, True]])
+
+    assert_allclose(left_matrix, expected)
+    assert_allclose(right_matrix, expected)
+    assert_allclose(left_matrix, right_matrix)
 
 
 def test_AST12907_001_nested_compound_no_false_cross_dependency_inflation():
     """Requirement AST12907-001, Scenario 2: independent nested groups keep dependency entries minimal."""
-    assert True
+    left_nested = (models.Rotation2D(2) &
+                   (models.Shift(4) & models.Shift(5)))
+    right_nested = ((models.Rotation2D(2) & models.Shift(4)) &
+                    models.Shift(5))
+
+    left_matrix = separability_matrix(left_nested)
+    right_matrix = separability_matrix(right_nested)
+    expected = np.array([[True, True, False, False],
+                         [True, True, False, False],
+                         [False, False, True, False],
+                         [False, False, False, True]])
+
+    assert_allclose(left_matrix, expected)
+    assert_allclose(right_matrix, expected)
+    assert_allclose(left_matrix, right_matrix)
 
 
 # Contract-traceability mapping for traceability audits.

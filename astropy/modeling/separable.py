@@ -127,6 +127,51 @@ def _compute_n_outputs(left, right):
     return noutp
 
 
+def _flatten_ampersand_chain(transform):
+    """
+    Return a left-to-right list of operands from an '&' chain.
+
+    Parameters
+    ----------
+    transform : `astropy.modeling.Model`
+        A model or compound model.
+    """
+    operands = []
+    stack = [transform]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, CompoundModel) and node.op == '&':
+            stack.append(node.right)
+            stack.append(node.left)
+        else:
+            operands.append(node)
+    return operands
+
+
+def _to_coord_operand(operand, pos, noutp):
+    """
+    Normalize an '&' operand into a coord-matrix block.
+
+    Parameters
+    ----------
+    operand : `astropy.modeling.Model` or ndarray
+        Leaf model or intermediate coord-matrix.
+    pos : {'left', 'right'}
+        Operand placement in composed outputs.
+    noutp : int
+        Total outputs of the composed '&' block.
+    """
+    if isinstance(operand, Model):
+        return _coord_matrix(operand, pos, noutp)
+
+    mat = np.zeros((noutp, operand.shape[1]))
+    if pos == 'left':
+        mat[:operand.shape[0], :operand.shape[1]] = operand
+    else:
+        mat[-operand.shape[0]:, -operand.shape[1]:] = operand
+    return mat
+
+
 def _arith_oper(left, right):
     """
     Function corresponding to one of the arithmetic operators
@@ -231,37 +276,10 @@ def _cstack(left, right):
         Result from this operation.
 
     """
-    # AST12907-001 (nested "&" associativity normalization)
-    # ------------------------------------------------------
-    # Pseudocode (control-flow, no runtime changes):
-    # 1) Treat "&" as a structural join between two coordinate blocks.
-    # 2) Normalize both operands to a canonical left-to-right list of blocks:
-    #    - If operand is a Model: use its direct coord_matrix for that side.
-    #    - If operand is an ndarray from recursive composition: use block values as-is
-    #      with a deterministic positional placement contract.
-    # 3) Compute total outputs with _compute_n_outputs(left, right).
-    # 4) Allocate output matrix (noutp, total_inputs_of_operand_blocks).
-    # 5) Place each normalized block without reinterpreting nesting depth:
-    #    - all coordinates of left block(s) occupy the first columns/rows.
-    #    - all coordinates of right block(s) occupy the last columns/rows.
-    # 6) Return hstack of left and right canonical blocks.
-    # 7) Failure path: malformed block shapes must surface through existing
-    #    indexing/shape semantics (no new coercion or semantic rewriting).
     noutp = _compute_n_outputs(left, right)
-
-    if isinstance(left, Model):
-        cleft = _coord_matrix(left, 'left', noutp)
-    else:
-        cleft = np.zeros((noutp, left.shape[1]))
-        cleft[: left.shape[0], : left.shape[1]] = left
-    if isinstance(right, Model):
-        cright = _coord_matrix(right, 'right', noutp)
-    else:
-        cright = np.zeros((noutp, right.shape[1]))
-        cright[-right.shape[0]:, -right.shape[1]:] = 1
-
+    cleft = _to_coord_operand(left, 'left', noutp)
+    cright = _to_coord_operand(right, 'right', noutp)
     return np.hstack([cleft, cright])
-
 
 def _cdot(left, right):
     """
@@ -320,24 +338,14 @@ def _separable(transform):
     if (transform_matrix := transform._calculate_separability_matrix()) is not NotImplemented:
         return transform_matrix
     elif isinstance(transform, CompoundModel):
-        # AST12907-001 requirement gate: separability must be parenthesization-invariant.
-        #
-        # Pseudocode (state/branching):
-        #  - Input state: transform is a CompoundModel node with fields (left, right, op).
-        #  - Decision: op == "&" ?
-        #    - YES: conceptually flatten consecutive "&" groups before matrix assembly.
-        #           This means:
-        #           a) Visit node.left in-order and node.right in-order.
-        #           b) Build a contiguous sequence of "&" operands.
-        #           c) Fold them with _cstack using only the preserved order.
-        #           d) Preserve output/input dimension mapping deterministically.
-        #    - NO: delegate to existing operator semantics directly.
-        #  - For both branches, recursively compute child matrices with identical
-        #    contract and combine through _operators[op].
-        #  - Success transition: return a matrix where True-dependency entries
-        #    reflect only actual coordinate flow.
-        #  - Failure transition: bubble up existing ModelDefinitionError from child
-        #    combination when dimensions or composition are invalid.
+        if transform.op == '&':
+            operands = _flatten_ampersand_chain(transform)
+            separable_matrix = _separable(operands[0])
+            for operand in operands[1:]:
+                separable_matrix = _operators['&'](separable_matrix,
+                                                   _separable(operand))
+            return separable_matrix
+
         sepleft = _separable(transform.left)
         sepright = _separable(transform.right)
         return _operators[transform.op](sepleft, sepright)
