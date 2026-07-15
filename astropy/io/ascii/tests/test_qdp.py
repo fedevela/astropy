@@ -258,11 +258,47 @@ REQUIREMENT_VERIFICATION_MAP = {
 
 def test_issue13_001_case_insensitive_read_serr_command_verb_dispatch():
     """ISSUE13-001: mixed-case READ command verbs dispatch via same handler path."""
-    # Scenario 1: mixed-case READ SERR command line should be treated as READ SERR.
-    assert True
+    qdp = """
+    ReAd SeRr 1 2
+    10 20 30 40
+    11 21 31 41
+    """
+
+    qdp_upper = """
+    READ SERR 1 2
+    10 20 30 40
+    11 21 31 41
+    """
+
+    lower = Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
+    upper = Table.read(qdp_upper, format="ascii.qdp", table_id=0, names=["x", "y"])
+
+    assert lower.colnames == upper.colnames
+    assert np.allclose(lower["x_err"], upper["x_err"])
+    assert np.allclose(lower["y_err"], upper["y_err"])
+    assert np.allclose(lower["x"], upper["x"])
+    assert np.allclose(lower["y"], upper["y"])
 
 
 def test_issue13_001_case_insensitive_read_command_sub_key_dispatch():
     """ISSUE13-001: mixed-case READ sub-keys dispatch via same recognized sub-key path."""
-    # Scenario 2: mixed-case READ command sub-key should be case-insensitive.
-    assert True
+    qdp = """
+    READ SeRr 1 2
+    100 200 300 400
+    101 201 301 401
+    """
+
+    qdp_upper = """
+    READ SERR 1 2
+    100 200 300 400
+    101 201 301 401
+    """
+
+    lower = Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
+    upper = Table.read(qdp_upper, format="ascii.qdp", table_id=0, names=["x", "y"])
+
+    assert lower.colnames == upper.colnames
+    assert np.allclose(lower["x_err"], upper["x_err"])
+    assert np.allclose(lower["y_err"], upper["y_err"])
+    assert np.allclose(lower["x"], upper["x"])
+    assert np.allclose(lower["y"], upper["y"])

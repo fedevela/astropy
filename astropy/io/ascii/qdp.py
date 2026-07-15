@@ -61,15 +61,6 @@ def _line_type(line, delimiter=None):
     """
     _decimal_re = r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?"
 
-    # ISSUE13-001: logic contract for case-insensitive dispatch routing.
-    # Decision branch required:
-    # 1) Trim line and classify empty line as "comment".
-    # 2) Attempt command parse against the command pattern where command verb
-    #    and command sub-key are compared case-insensitively.
-    # 3) For accepted command forms (READ + [TS]ERR + columns),
-    #    route to command handling path.
-    # 4) For NO/NO,... and data patterns, route to "new"/"data" paths.
-    # 5) Otherwise fail with Unrecognized QDP line (existing failure path).
     _command_re = r"READ [TS]ERR(\s+[0-9]+)+"
 
     sep = delimiter
@@ -78,7 +69,10 @@ def _line_type(line, delimiter=None):
     _new_re = rf"NO({sep}NO)+"
     _data_re = rf"({_decimal_re}|NO|[-+]?nan)({sep}({_decimal_re}|NO|[-+]?nan))*)"
     _type_re = rf"^\s*((?P<command>{_command_re})|(?P<new>{_new_re})|(?P<data>{_data_re})?\s*(\!(?P<comment>.*))?\s*$"
-    _line_type_re = re.compile(_type_re)
+    # ISSUE13-001: command token matching must be case-insensitive for both
+    # verb (READ) and key (SERR/TERR) while preserving all previous routing
+    # behavior.
+    _line_type_re = re.compile(_type_re, flags=re.IGNORECASE)
     line = line.strip()
     if not line:
         return "comment"
@@ -307,14 +301,10 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
                     # This should never happen, but just in case.
                     if len(command) < 3:
                         continue
-                    # ISSUE13-001: logic contract for sub-key case handling.
-                    # Branch on normalized command key, not raw token casing.
-                    # 1) canonical_key = command[1].lower()
-                    # 2) if canonical_key == "serr" => err_specs["serr"] = columns
-                    # 3) if canonical_key == "terr" => err_specs["terr"] = columns
-                    # 4) otherwise preserve existing behavior (no new accept/reject path)
-                    # 5) column list remains int(token) for each position token.
-                    err_specs[command[1].lower()] = [int(c) for c in command[2:]]
+                    # ISSUE13-001: recognize command sub-keys case-insensitively.
+                    command_key = command[1].lower()
+                    if command_key in ("serr", "terr"):
+                        err_specs[command_key] = [int(c) for c in command[2:]]
             if colnames is None:
                 colnames = _interpret_err_lines(err_specs, ncol, names=input_colnames)
 
