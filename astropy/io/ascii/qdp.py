@@ -72,27 +72,8 @@ def _line_type(line, delimiter=None):
     line = line.strip()
     if not line:
         return "comment"
-    match = re.match(_type_re, line)
-
-    # ISSUE13-005: public-call-path obligation.
-    # 1) Maintain current upstream call contract: `_line_type` receives raw input
-    #    from `Table.read(..., format='ascii.qdp')` or `QDP.read` directly.
-    # 2) Keep numeric/comment recognition on the strict grammar path; do not
-    #    accept lowercase/mixed-case by coercing non-command token semantics.
-    # 3) For command-only fallback, permit command-token case-insensitivity
-    #    locally without introducing any caller-side normalization.
+    match = re.match(_type_re, line, flags=re.IGNORECASE)
     if match is None:
-        ci_command_re = re.compile(rf"^\s*{_command_re}\s*$", flags=re.IGNORECASE)
-        if ci_command_re.match(line):
-            command = line.split()
-            if len(command) < 3:
-                raise ValueError(f"Unrecognized QDP line: {line}")
-            if command[0].upper() != "READ":
-                raise ValueError(f"Unrecognized QDP line: {line}")
-            command_key = command[1].lower()
-            if command_key not in ("serr", "terr"):
-                raise ValueError(f"Unrecognized QDP line: {line}")
-            return "command"
         raise ValueError(f"Unrecognized QDP line: {line}")
 
     for type_, val in match.groupdict().items():
@@ -101,10 +82,6 @@ def _line_type(line, delimiter=None):
         if type_ == "data":
             return f"data,{len(val.split(sep=delimiter))}"
         if type_ == "command":
-            # ISSUE13-005: command dispatch obligation.
-            # - tokenize on whitespace from raw line (no pre-normalization).
-            # - keep VERB case-insensitive via upper() only for acceptance check.
-            # - persist sub-key canonicalization only through lower(), then gate to serr/terr.
             command = line.split()
             if len(command) < 3:
                 raise ValueError(f"Unrecognized QDP line: {line}")
@@ -152,13 +129,6 @@ def _get_type_from_list_of_lines(lines, delimiter=None):
         ...
     ValueError: Inconsistent number of columns
     """
-    # ISSUE13-004: logic obligation.
-    # 1) derive deterministic per-line type labels by calling `_line_type`.
-    # 2) enforce invariant: all observed data rows expose same column-count token
-    #    cardinality via separator-strict split.
-    # 3) if any data row has a different cardinality, propagate
-    #    `ValueError("Inconsistent number of columns")` unchanged.
-    # 4) if there is no data row, keep `ncol=None` to avoid introducing behavior.
     types = [_line_type(line, delimiter=delimiter) for line in lines]
     current_ncol = None
     for type_ in types:
@@ -306,32 +276,6 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
     command_lines = ""
     current_rows = None
 
-    # ISSUE13-004: logic obligation.
-    # ISSUE13-005: public-call-path obligation.
-    # - no pre-normalization exists before parser entry; `read` enters here with
-    #   user-supplied casing intact.
-    # - FSM states: `initial_comments` (before first table data),
-    #   `current_rows` (active rows), `command_lines` (command block), `comment_text`
-    #   (table-local comments), `err_specs` (parsed command offsets), `colnames` (schema).
-    # - For each `(line, datatype)`:
-    #   1) normalize line by trim + leading "!" removal for classification-independent
-    #      comment/data token extraction.
-    #   2) route by deterministic branch:
-    #      comment -> append raw stripped text to `comment_text`;
-    #      command -> append as-is to `command_lines`, and capture initial comment
-    #                handoff on first command.
-    #      data -> lazily compute err specs (only once), then parse value tokens into
-    #              row list.
-    #      new -> materialize table boundary and reset per-table collectors.
-    #   3) command dispatch check remains strict on token semantics, with only
-    #      `READ` + (`serr`|`terr`) accepted after lowercase normalization.
-    # - Value parsing branch stays unchanged:
-    #   - split in input order with requested delimiter;
-    #   - emit mask token "NO" only when token text exactly equals "NO";
-    #   - attempt int then float conversion to preserve current dtype inference order.
-    # - Failure path:
-    #   - no change in table shape/dtype from command token case changes; existing
-    #     branch rejections keep surfacing by existing `ValueError`.
     for line, datatype in zip(lines, contents):
         line = line.strip().lstrip("!")
         # Is this a comment?
@@ -340,12 +284,6 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
             continue
 
         if datatype == "command":
-            # ISSUE13-002: pseudocode branch:
-            # - store command lines as read, without transforming case.
-            # - preserve comment handoff and existing multiple-command warning.
-            # ISSUE13-005:
-            # - preserve full raw command line text and whitespace shape.
-            # - do not mutate line content before later `command_key` normalization.
             # The first time I find commands, I save whatever comments into
             # The initial comments.
             if command_lines == "":
@@ -363,24 +301,6 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
         if datatype.startswith("data"):
             # The first time I find data, I define err_specs
             if err_specs == {} and command_lines != "":
-                # ISSUE13-002: pseudocode branch:
-                # - tokenize each captured command line.
-                # - if token count < 3, ignore as malformed/no-op.
-                # - normalize sub-key via lower() before comparing serr/terr.
-                # - parse indices as integers to build canonical `err_specs`.
-                # - canonical `err_specs` must be identical for mixed-case or
-                #   uppercase READ SERR/TERR commands.
-                # ISSUE13-003: logic obligation.
-                # - command dispatch is intentionally limited to serr/terr keys only.
-                # - after lower() normalization, any other key must not resolve to a
-                #   valid command handler.
-                # - because line-level recognition is strict, this branch should never
-                #   materialize an unrecognized command key; if it did, behavior must
-                #   remain reject/ignore rather than coercing to serr/terr.
-                # ISSUE13-005:
-                # - accept lower/mixed-case commands by canonicalizing `command[1]`
-                #   only; preserve `command[0]` and `command[2:]` as-is for the
-                #   acceptance semantics that already exist in this branch.
                 for cline in command_lines.strip().split("\n"):
                     command = cline.strip().split()
 
@@ -388,7 +308,6 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
                     if len(command) < 3:
                         continue
 
-                    # ISSUE13-001: recognize command sub-keys case-insensitively.
                     if command[0].upper() != "READ":
                         raise ValueError(f"Unrecognized QDP line: {cline}")
                     command_key = command[1].lower()
@@ -402,12 +321,8 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
                 current_rows = []
 
             values = []
-            # ISSUE13-002: pseudocode branch:
-            # - parse row tokens in order using delimiter.
-            # - convert NO => masked, else parse as int then float.
-            # - semantics and output values are case-independent.
             for v in line.split(delimiter):
-                if v == "NO":
+                if v.upper() == "NO":
                     values.append(np.ma.masked)
                 else:
                     # Understand if number is int or float
@@ -516,21 +431,9 @@ def _read_table_qdp(qdp_file, names=None, table_id=None, delimiter=None):
         )
         table_id = 0
 
-    # ISSUE13-005: interface-preservation branch.
-    # - call entry is fixed: this function is always reached via the public
-    #   `Table.read(..., format='ascii.qdp')` path (or `QDP.read`) with no
-    #   pre-normalization shim.
-    # - delegate directly to `_get_tables_from_qdp_file`; no case-normalized or
-    #   alternate reader branch is introduced.
     tables = _get_tables_from_qdp_file(
         qdp_file, input_colnames=names, delimiter=delimiter
     )
-    # ISSUE13-002: pseudocode branch:
-    # - selection contract: return `tables[table_id]` from parser output.
-    # - parsing invariants from mixed/lower-case READ SERR are enforced upstream.
-    # ISSUE13-004: logic obligation.
-    # - Preserve output ordering and indexing: return exactly the selected `table_id`
-    #   without re-sorting tables, converting dtypes, or mutating rows.
 
     return tables[table_id]
 
@@ -741,9 +644,6 @@ class QDP(basic.Basic):
         self.delimiter = sep
 
     def read(self, table):
-        # ISSUE13-005: API-entry invariant.
-        # - The public QDP format call path is fixed (`ascii.qdp` route), so this
-        #   method continues to hand raw lines straight to `_read_table_qdp`.
         self.lines = self.inputter.get_lines(table, newline="\n")
         return _read_table_qdp(
             self.lines,

@@ -1,0 +1,729 @@
+2026-07-15 01:20:50,570 - INFO - Creating container for astropy__astropy-14365...
+2026-07-15 01:20:50,651 - INFO - Container for astropy__astropy-14365 created: 7f29d012e53109ab9fc004c7dc97bd357a7004c3d3aaca47f55bccfad39a6ff8
+2026-07-15 01:20:50,778 - INFO - Container for astropy__astropy-14365 started: 7f29d012e53109ab9fc004c7dc97bd357a7004c3d3aaca47f55bccfad39a6ff8
+2026-07-15 01:20:50,778 - INFO - Intermediate patch for astropy__astropy-14365 written to logs/run_evaluation/atlas-final-issue-13-attempt-0/atlas-agentic-platform/astropy__astropy-14365/patch.diff, now applying to container...
+2026-07-15 01:20:50,885 - INFO - >>>>> Applied Patch:
+Checking patch astropy/io/ascii/qdp.py...
+Checking patch astropy/io/ascii/qdp_issue13_001_architecture.md...
+Checking patch astropy/io/ascii/qdp_issue13_002_architecture.md...
+Checking patch astropy/io/ascii/qdp_issue13_003_architecture.md...
+Checking patch astropy/io/ascii/qdp_issue13_004_architecture.md...
+Checking patch astropy/io/ascii/qdp_issue13_005_architecture.md...
+Checking patch astropy/io/ascii/tests/test_qdp.py...
+Applied patch astropy/io/ascii/qdp.py cleanly.
+Applied patch astropy/io/ascii/qdp_issue13_001_architecture.md cleanly.
+Applied patch astropy/io/ascii/qdp_issue13_002_architecture.md cleanly.
+Applied patch astropy/io/ascii/qdp_issue13_003_architecture.md cleanly.
+Applied patch astropy/io/ascii/qdp_issue13_004_architecture.md cleanly.
+Applied patch astropy/io/ascii/qdp_issue13_005_architecture.md cleanly.
+Applied patch astropy/io/ascii/tests/test_qdp.py cleanly.
+
+2026-07-15 01:20:51,207 - INFO - Git diff before:
+diff --git a/astropy/io/ascii/qdp.py b/astropy/io/ascii/qdp.py
+index 83a4f004a..3e3bc418b 100644
+--- a/astropy/io/ascii/qdp.py
++++ b/astropy/io/ascii/qdp.py
+@@ -60,6 +60,7 @@ def _line_type(line, delimiter=None):
+     ValueError: Unrecognized QDP line...
+     """
+     _decimal_re = r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?"
++
+     _command_re = r"READ [TS]ERR(\s+[0-9]+)+"
+ 
+     sep = delimiter
+@@ -68,19 +69,51 @@ def _line_type(line, delimiter=None):
+     _new_re = rf"NO({sep}NO)+"
+     _data_re = rf"({_decimal_re}|NO|[-+]?nan)({sep}({_decimal_re}|NO|[-+]?nan))*)"
+     _type_re = rf"^\s*((?P<command>{_command_re})|(?P<new>{_new_re})|(?P<data>{_data_re})?\s*(\!(?P<comment>.*))?\s*$"
+-    _line_type_re = re.compile(_type_re)
+     line = line.strip()
+     if not line:
+         return "comment"
+-    match = _line_type_re.match(line)
+-
++    match = re.match(_type_re, line)
++
++    # ISSUE13-005: public-call-path obligation.
++    # 1) Maintain current upstream call contract: `_line_type` receives raw input
++    #    from `Table.read(..., format='ascii.qdp')` or `QDP.read` directly.
++    # 2) Keep numeric/comment recognition on the strict grammar path; do not
++    #    accept lowercase/mixed-case by coercing non-command token semantics.
++    # 3) For command-only fallback, permit command-token case-insensitivity
++    #    locally without introducing any caller-side normalization.
+     if match is None:
++        ci_command_re = re.compile(rf"^\s*{_command_re}\s*$", flags=re.IGNORECASE)
++        if ci_command_re.match(line):
++            command = line.split()
++            if len(command) < 3:
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            if command[0].upper() != "READ":
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            command_key = command[1].lower()
++            if command_key not in ("serr", "terr"):
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            return "command"
+         raise ValueError(f"Unrecognized QDP line: {line}")
++
+     for type_, val in match.groupdict().items():
+         if val is None:
+             continue
+         if type_ == "data":
+             return f"data,{len(val.split(sep=delimiter))}"
++        if type_ == "command":
++            # ISSUE13-005: command dispatch obligation.
++            # - tokenize on whitespace from raw line (no pre-normalization).
++            # - keep VERB case-insensitive via upper() only for acceptance check.
++            # - persist sub-key canonicalization only through lower(), then gate to serr/terr.
++            command = line.split()
++            if len(command) < 3:
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            if command[0].upper() != "READ":
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            command_key = command[1].lower()
++            if command_key not in ("serr", "terr"):
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            return type_
+         else:
+             return type_
+ 
+@@ -119,6 +152,13 @@ def _get_type_from_list_of_lines(lines, delimiter=None):
+         ...
+     ValueError: Inconsistent number of columns
+     """
++    # ISSUE13-004: logic obligation.
++    # 1) derive deterministic per-line type labels by calling `_line_type`.
++    # 2) enforce invariant: all observed data rows expose same column-count token
++    #    cardinality via separator-strict split.
++    # 3) if any data row has a different cardinality, propagate
++    #    `ValueError("Inconsistent number of columns")` unchanged.
++    # 4) if there is no data row, keep `ncol=None` to avoid introducing behavior.
+     types = [_line_type(line, delimiter=delimiter) for line in lines]
+     current_ncol = None
+     for type_ in types:
+@@ -200,7 +240,6 @@ def _interpret_err_lines(err_specs, ncols, names=None):
+ 
+         serr_cols = err_specs.pop("serr", [])
+         terr_cols = err_specs.pop("terr", [])
+-
+     if names is not None:
+         all_error_cols = len(serr_cols) + len(terr_cols) * 2
+         if all_error_cols + len(names) != ncols:
+@@ -267,6 +306,32 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+     command_lines = ""
+     current_rows = None
+ 
++    # ISSUE13-004: logic obligation.
++    # ISSUE13-005: public-call-path obligation.
++    # - no pre-normalization exists before parser entry; `read` enters here with
++    #   user-supplied casing intact.
++    # - FSM states: `initial_comments` (before first table data),
++    #   `current_rows` (active rows), `command_lines` (command block), `comment_text`
++    #   (table-local comments), `err_specs` (parsed command offsets), `colnames` (schema).
++    # - For each `(line, datatype)`:
++    #   1) normalize line by trim + leading "!" removal for classification-independent
++    #      comment/data token extraction.
++    #   2) route by deterministic branch:
++    #      comment -> append raw stripped text to `comment_text`;
++    #      command -> append as-is to `command_lines`, and capture initial comment
++    #                handoff on first command.
++    #      data -> lazily compute err specs (only once), then parse value tokens into
++    #              row list.
++    #      new -> materialize table boundary and reset per-table collectors.
++    #   3) command dispatch check remains strict on token semantics, with only
++    #      `READ` + (`serr`|`terr`) accepted after lowercase normalization.
++    # - Value parsing branch stays unchanged:
++    #   - split in input order with requested delimiter;
++    #   - emit mask token "NO" only when token text exactly equals "NO";
++    #   - attempt int then float conversion to preserve current dtype inference order.
++    # - Failure path:
++    #   - no change in table shape/dtype from command token case changes; existing
++    #     branch rejections keep surfacing by existing `ValueError`.
+     for line, datatype in zip(lines, contents):
+         line = line.strip().lstrip("!")
+         # Is this a comment?
+@@ -275,6 +340,12 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+             continue
+ 
+         if datatype == "command":
++            # ISSUE13-002: pseudocode branch:
++            # - store command lines as read, without transforming case.
++            # - preserve comment handoff and existing multiple-command warning.
++            # ISSUE13-005:
++            # - preserve full raw command line text and whitespace shape.
++            # - do not mutate line content before later `command_key` normalization.
+             # The first time I find commands, I save whatever comments into
+             # The initial comments.
+             if command_lines == "":
+@@ -292,12 +363,38 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+         if datatype.startswith("data"):
+             # The first time I find data, I define err_specs
+             if err_specs == {} and command_lines != "":
++                # ISSUE13-002: pseudocode branch:
++                # - tokenize each captured command line.
++                # - if token count < 3, ignore as malformed/no-op.
++                # - normalize sub-key via lower() before comparing serr/terr.
++                # - parse indices as integers to build canonical `err_specs`.
++                # - canonical `err_specs` must be identical for mixed-case or
++                #   uppercase READ SERR/TERR commands.
++                # ISSUE13-003: logic obligation.
++                # - command dispatch is intentionally limited to serr/terr keys only.
++                # - after lower() normalization, any other key must not resolve to a
++                #   valid command handler.
++                # - because line-level recognition is strict, this branch should never
++                #   materialize an unrecognized command key; if it did, behavior must
++                #   remain reject/ignore rather than coercing to serr/terr.
++                # ISSUE13-005:
++                # - accept lower/mixed-case commands by canonicalizing `command[1]`
++                #   only; preserve `command[0]` and `command[2:]` as-is for the
++                #   acceptance semantics that already exist in this branch.
+                 for cline in command_lines.strip().split("\n"):
+                     command = cline.strip().split()
++
+                     # This should never happen, but just in case.
+                     if len(command) < 3:
+                         continue
+-                    err_specs[command[1].lower()] = [int(c) for c in command[2:]]
++
++                    # ISSUE13-001: recognize command sub-keys case-insensitively.
++                    if command[0].upper() != "READ":
++                        raise ValueError(f"Unrecognized QDP line: {cline}")
++                    command_key = command[1].lower()
++                    if command_key not in ("serr", "terr"):
++                        raise ValueError(f"Unrecognized QDP line: {cline}")
++                    err_specs[command_key] = [int(c) for c in command[2:]]
+             if colnames is None:
+                 colnames = _interpret_err_lines(err_specs, ncol, names=input_colnames)
+ 
+@@ -305,6 +402,10 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+                 current_rows = []
+ 
+             values = []
++            # ISSUE13-002: pseudocode branch:
++            # - parse row tokens in order using delimiter.
++            # - convert NO => masked, else parse as int then float.
++            # - semantics and output values are case-independent.
+             for v in line.split(delimiter):
+                 if v == "NO":
+                     values.append(np.ma.masked)
+@@ -415,9 +516,21 @@ def _read_table_qdp(qdp_file, names=None, table_id=None, delimiter=None):
+         )
+         table_id = 0
+ 
++    # ISSUE13-005: interface-preservation branch.
++    # - call entry is fixed: this function is always reached via the public
++    #   `Table.read(..., format='ascii.qdp')` path (or `QDP.read`) with no
++    #   pre-normalization shim.
++    # - delegate directly to `_get_tables_from_qdp_file`; no case-normalized or
++    #   alternate reader branch is introduced.
+     tables = _get_tables_from_qdp_file(
+         qdp_file, input_colnames=names, delimiter=delimiter
+     )
++    # ISSUE13-002: pseudocode branch:
++    # - selection contract: return `tables[table_id]` from parser output.
++    # - parsing invariants from mixed/lower-case READ SERR are enforced upstream.
++    # ISSUE13-004: logic obligation.
++    # - Preserve output ordering and indexing: return exactly the selected `table_id`
++    #   without re-sorting tables, converting dtypes, or mutating rows.
+ 
+     return tables[table_id]
+ 
+@@ -628,6 +741,9 @@ class QDP(basic.Basic):
+         self.delimiter = sep
+ 
+     def read(self, table):
++        # ISSUE13-005: API-entry invariant.
++        # - The public QDP format call path is fixed (`ascii.qdp` route), so this
++        #   method continues to hand raw lines straight to `_read_table_qdp`.
+         self.lines = self.inputter.get_lines(table, newline="\n")
+         return _read_table_qdp(
+             self.lines,
+diff --git a/astropy/io/ascii/tests/test_qdp.py b/astropy/io/ascii/tests/test_qdp.py
+index ef24e6f6a..d637cd824 100644
+--- a/astropy/io/ascii/tests/test_qdp.py
++++ b/astropy/io/ascii/tests/test_qdp.py
+@@ -245,3 +245,254 @@ def test_get_lines_from_qdp(tmp_path):
+         assert file_output[i] == line
+         assert list_output[i] == line
+         assert text_output[i] == line
++
++
++# Requirement-to-verification mapping for traceability in SPARC phase 05.
++REQUIREMENT_VERIFICATION_MAP = {
++    "ISSUE13-001": [
++        "test_issue13_001_case_insensitive_read_serr_command_verb_dispatch",
++        "test_issue13_001_case_insensitive_read_command_sub_key_dispatch",
++    ],
++    "ISSUE13-002": [
++        "test_issue13_002_issue_spec_reads_mixed_case_read_serr_and_succeeds",
++        "test_issue13_002_issue_spec_columns_and_error_semantics_match_uppercase_reference",
++    ],
++    "ISSUE13-003": [
++        "test_issue13_003_issue_spec_rejects_normalized_unknown_command_via_unrecognized_qdp_line",
++        "test_issue13_003_issue_spec_rejects_invalid_read_subkey_after_case_normalization",
++    ],
++    "ISSUE13-004": [
++        "test_issue13_004_issue_spec_preserves_uppercase_qdp_table_shape_type_order_and_values_after_case_insensitive_read_path",
++        "test_issue13_004_issue_spec_preserves_comments_and_whitespace_semantics_with_uppercase_qdp_and_mixed_spacing",
++    ],
++    "ISSUE13-005": [
++        "test_issue13_005_issue_spec_preserves_public_call_path_for_ascii_qdp_without_pre_normalization",
++        "test_issue13_005_issue_spec_accepts_lowercase_and_mixed_case_qdp_same_read_shape_format_ascii_qdp",
++    ],
++}
++
++
++def test_issue13_001_case_insensitive_read_serr_command_verb_dispatch():
++    """ISSUE13-001: mixed-case READ command verbs dispatch via same handler path."""
++    qdp = """
++    ReAd SeRr 1 2
++    10 20 30 40
++    11 21 31 41
++    """
++
++    qdp_upper = """
++    READ SERR 1 2
++    10 20 30 40
++    11 21 31 41
++    """
++
++    lower = Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
++    upper = Table.read(qdp_upper, format="ascii.qdp", table_id=0, names=["x", "y"])
++
++    assert lower.colnames == upper.colnames
++    assert np.allclose(lower["x_err"], upper["x_err"])
++    assert np.allclose(lower["y_err"], upper["y_err"])
++    assert np.allclose(lower["x"], upper["x"])
++    assert np.allclose(lower["y"], upper["y"])
++
++
++def test_issue13_001_case_insensitive_read_command_sub_key_dispatch():
++    """ISSUE13-001: mixed-case READ sub-keys dispatch via same recognized sub-key path."""
++    qdp = """
++    READ SeRr 1 2
++    100 200 300 400
++    101 201 301 401
++    """
++
++    qdp_upper = """
++    READ SERR 1 2
++    100 200 300 400
++    101 201 301 401
++    """
++
++    lower = Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
++    upper = Table.read(qdp_upper, format="ascii.qdp", table_id=0, names=["x", "y"])
++
++    assert lower.colnames == upper.colnames
++    assert np.allclose(lower["x_err"], upper["x_err"])
++    assert np.allclose(lower["y_err"], upper["y_err"])
++    assert np.allclose(lower["x"], upper["x"])
++    assert np.allclose(lower["y"], upper["y"])
++
++
++def test_issue13_002_issue_spec_reads_mixed_case_read_serr_and_succeeds():
++    """ISSUE13-002: lowercase/mixed-case read serr command succeeds with ascii.qdp parsing."""
++    lower_case = """
++    read serr 1 2
++    1 0.5 1 0.5
++    """
++    mixed_case = """
++    ReAd SeRr 1 2
++    1 0.5 1 0.5
++    """
++    expected = Table.read(mixed_case, format="ascii.qdp", names=["x", "y"], table_id=0)
++    result = Table.read(lower_case, format="ascii.qdp", names=["x", "y"], table_id=0)
++
++    assert result.colnames == ["x", "x_err", "y", "y_err"]
++    assert len(result) == 1
++    assert np.allclose(result["x"], [1])
++    assert np.allclose(result["x_err"], [0.5])
++    assert np.allclose(result["y"], [1])
++    assert np.allclose(result["y_err"], [0.5])
++    assert result.colnames == expected.colnames
++    assert [name for name in result.colnames if name.endswith("_err")] == ["x_err", "y_err"]
++    assert np.ma.allequal(result["x"], expected["x"])
++    assert np.ma.allequal(result["x_err"], expected["x_err"])
++    assert np.ma.allequal(result["y"], expected["y"])
++    assert np.ma.allequal(result["y_err"], expected["y_err"])
++
++
++def test_issue13_002_issue_spec_columns_and_error_semantics_match_uppercase_reference():
++    """ISSUE13-002: mixed-case read serr output matches READ SERR output for columns and errors."""
++    qdp_lower = """
++    read serr 1 2
++    1 0.5 1 0.5
++    2 0.75 2 0.75
++    """
++    qdp_upper = """
++    READ SERR 1 2
++    1 0.5 1 0.5
++    2 0.75 2 0.75
++    """
++    table_lower = Table.read(qdp_lower, format="ascii.qdp", names=["x", "y"], table_id=0)
++    table_upper = Table.read(qdp_upper, format="ascii.qdp", names=["x", "y"], table_id=0)
++
++    assert table_lower.colnames == table_upper.colnames
++    assert len(table_lower) == len(table_upper) == 2
++    for name in table_lower.colnames:
++        assert np.ma.allequal(table_lower[name], table_upper[name])
++    assert "_err" in table_lower.colnames
++    assert "x_err" in table_lower.colnames
++    assert "y_err" in table_lower.colnames
++
++
++def test_issue13_003_issue_spec_rejects_normalized_unknown_command_via_unrecognized_qdp_line():
++    """ISSUE13-003: unknown command should follow Unrecognized QDP line path after normalization."""
++    qdp = """
++    READD SERR 1 2
++    1 2 3
++    """
++
++    with pytest.raises(ValueError, match="Unrecognized QDP line"):
++        Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
++
++
++def test_issue13_003_issue_spec_rejects_invalid_read_subkey_after_case_normalization():
++    """ISSUE13-003: misspelled READ sub-key should remain rejected after case normalization."""
++    qdp = """
++    READ SeRrR 1 2
++    1 2 3
++    """
++
++    with pytest.raises(ValueError, match="Unrecognized QDP line"):
++        Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
++
++
++def test_issue13_004_issue_spec_preserves_uppercase_qdp_table_shape_type_order_and_values_after_case_insensitive_read_path():
++    """ISSUE13-004: Scenario 1 - preserve uppercase parsing behavior and table metadata-free shape/type/order."""
++    uppercase_qdp = """
++    ! Baseline uppercase fixture
++    READ SERR 1
++    1    10.5   100
++    2    20     200
++    NO NO NO
++    """
++    mixed_case_qdp = """
++    ! Baseline uppercase fixture
++    ReAd sErR 1
++    1    10.5   100
++    2    20     200
++    NO NO NO
++    """
++
++    table_upper = Table.read(
++        uppercase_qdp, format="ascii.qdp", table_id=0, names=["x", "y"]
++    )
++    table_mixed = Table.read(
++        mixed_case_qdp, format="ascii.qdp", table_id=0, names=["x", "y"]
++    )
++
++    assert table_upper.colnames == ["x", "x_err", "y"] == table_mixed.colnames
++    assert len(table_upper) == len(table_mixed) == 2
++    assert table_upper["x"].dtype == table_mixed["x"].dtype
++    assert table_upper["x_err"].dtype == table_mixed["x_err"].dtype
++    assert table_upper["y"].dtype == table_mixed["y"].dtype
++    assert np.ma.allequal(table_upper["x"], table_mixed["x"])
++    assert np.ma.allequal(table_upper["x_err"], table_mixed["x_err"])
++    assert np.ma.allequal(table_upper["y"], table_mixed["y"])
++    assert np.allclose(table_upper["x"], [1, 2])
++    assert np.allclose(table_upper["y"], [100, 200])
++
++
++def test_issue13_004_issue_spec_preserves_comments_and_whitespace_semantics_with_uppercase_qdp_and_mixed_spacing():
++    """ISSUE13-004: Scenario 2 - preserve comments and whitespace parsing semantics for uppercase inputs."""
++    qdp = """
++    !  initial comment
++    !\tsecond comment with tabs
++    READ    SERR   1
++    !\ttable comment
++    1 \t\t 10.5   100
++    2   \t20      \t200
++    NO    NO   NO
++    """
++
++    table = Table.read(qdp, format="ascii.qdp", table_id=0)
++
++    assert table.meta["initial_comments"] == [
++        "initial comment",
++        "second comment with tabs",
++    ]
++    assert table.meta["comments"] == ["table comment"]
++    assert table.colnames == ["col1", "col1_err", "col2"]
++    assert len(table) == 2
++    assert np.allclose(table["col1"], [1, 2])
++    assert np.ma.allequal(table["col1_err"], np.ma.array([10.5, 20.0]))
++    assert np.allclose(table["col2"], [100, 200])
++
++
++def test_issue13_005_issue_spec_preserves_public_call_path_for_ascii_qdp_without_pre_normalization():
++    """ISSUE13-005: Table.read(..., format='ascii.qdp') handles lowercase command input as-is."""
++    qdp = """
++    read serr 1 2
++    1 0.5 1 0.5
++    """
++
++    parsed = Table.read(qdp, format="ascii.qdp", names=["x", "y"], table_id=0)
++
++    assert parsed.colnames == ["x", "x_err", "y", "y_err"]
++    assert len(parsed) == 1
++    assert np.allclose(parsed["x"], [1.0])
++    assert np.allclose(parsed["x_err"], [0.5])
++    assert np.allclose(parsed["y"], [1.0])
++    assert np.allclose(parsed["y_err"], [0.5])
++
++
++def test_issue13_005_issue_spec_accepts_lowercase_and_mixed_case_qdp_same_read_shape_format_ascii_qdp():
++    """ISSUE13-005: lowercase and mixed-case QDP inputs should succeed with format='ascii.qdp' no preprocessing."""
++    qdp_lower = """
++    read SeRr 1 2
++    1 0.5 1 0.5
++    2 0.75 2 0.75
++    """
++    qdp_upper = """
++    READ SERR 1 2
++    1 0.5 1 0.5
++    2 0.75 2 0.75
++    """
++
++    lower = Table.read(
++        qdp_lower, format="ascii.qdp", table_id=0, names=["x", "y"]
++    )
++    upper = Table.read(
++        qdp_upper, format="ascii.qdp", table_id=0, names=["x", "y"]
++    )
++
++    assert lower.shape == upper.shape
++    assert lower.colnames == upper.colnames == ["x", "x_err", "y", "y_err"]
++    for column in lower.colnames:
++        assert np.ma.allequal(lower[column], upper[column])
+2026-07-15 01:20:51,208 - INFO - Eval script for astropy__astropy-14365 written to logs/run_evaluation/atlas-final-issue-13-attempt-0/atlas-agentic-platform/astropy__astropy-14365/eval.sh; copying to container...
+2026-07-15 01:21:34,431 - INFO - Test runtime: 43.18 seconds
+2026-07-15 01:21:34,431 - INFO - Test output for astropy__astropy-14365 written to logs/run_evaluation/atlas-final-issue-13-attempt-0/atlas-agentic-platform/astropy__astropy-14365/test_output.txt
+2026-07-15 01:21:34,472 - INFO - Git diff after:
+diff --git a/astropy/io/ascii/qdp.py b/astropy/io/ascii/qdp.py
+index 83a4f004a..3e3bc418b 100644
+--- a/astropy/io/ascii/qdp.py
++++ b/astropy/io/ascii/qdp.py
+@@ -60,6 +60,7 @@ def _line_type(line, delimiter=None):
+     ValueError: Unrecognized QDP line...
+     """
+     _decimal_re = r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?"
++
+     _command_re = r"READ [TS]ERR(\s+[0-9]+)+"
+ 
+     sep = delimiter
+@@ -68,19 +69,51 @@ def _line_type(line, delimiter=None):
+     _new_re = rf"NO({sep}NO)+"
+     _data_re = rf"({_decimal_re}|NO|[-+]?nan)({sep}({_decimal_re}|NO|[-+]?nan))*)"
+     _type_re = rf"^\s*((?P<command>{_command_re})|(?P<new>{_new_re})|(?P<data>{_data_re})?\s*(\!(?P<comment>.*))?\s*$"
+-    _line_type_re = re.compile(_type_re)
+     line = line.strip()
+     if not line:
+         return "comment"
+-    match = _line_type_re.match(line)
+-
++    match = re.match(_type_re, line)
++
++    # ISSUE13-005: public-call-path obligation.
++    # 1) Maintain current upstream call contract: `_line_type` receives raw input
++    #    from `Table.read(..., format='ascii.qdp')` or `QDP.read` directly.
++    # 2) Keep numeric/comment recognition on the strict grammar path; do not
++    #    accept lowercase/mixed-case by coercing non-command token semantics.
++    # 3) For command-only fallback, permit command-token case-insensitivity
++    #    locally without introducing any caller-side normalization.
+     if match is None:
++        ci_command_re = re.compile(rf"^\s*{_command_re}\s*$", flags=re.IGNORECASE)
++        if ci_command_re.match(line):
++            command = line.split()
++            if len(command) < 3:
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            if command[0].upper() != "READ":
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            command_key = command[1].lower()
++            if command_key not in ("serr", "terr"):
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            return "command"
+         raise ValueError(f"Unrecognized QDP line: {line}")
++
+     for type_, val in match.groupdict().items():
+         if val is None:
+             continue
+         if type_ == "data":
+             return f"data,{len(val.split(sep=delimiter))}"
++        if type_ == "command":
++            # ISSUE13-005: command dispatch obligation.
++            # - tokenize on whitespace from raw line (no pre-normalization).
++            # - keep VERB case-insensitive via upper() only for acceptance check.
++            # - persist sub-key canonicalization only through lower(), then gate to serr/terr.
++            command = line.split()
++            if len(command) < 3:
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            if command[0].upper() != "READ":
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            command_key = command[1].lower()
++            if command_key not in ("serr", "terr"):
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            return type_
+         else:
+             return type_
+ 
+@@ -119,6 +152,13 @@ def _get_type_from_list_of_lines(lines, delimiter=None):
+         ...
+     ValueError: Inconsistent number of columns
+     """
++    # ISSUE13-004: logic obligation.
++    # 1) derive deterministic per-line type labels by calling `_line_type`.
++    # 2) enforce invariant: all observed data rows expose same column-count token
++    #    cardinality via separator-strict split.
++    # 3) if any data row has a different cardinality, propagate
++    #    `ValueError("Inconsistent number of columns")` unchanged.
++    # 4) if there is no data row, keep `ncol=None` to avoid introducing behavior.
+     types = [_line_type(line, delimiter=delimiter) for line in lines]
+     current_ncol = None
+     for type_ in types:
+@@ -200,7 +240,6 @@ def _interpret_err_lines(err_specs, ncols, names=None):
+ 
+         serr_cols = err_specs.pop("serr", [])
+         terr_cols = err_specs.pop("terr", [])
+-
+     if names is not None:
+         all_error_cols = len(serr_cols) + len(terr_cols) * 2
+         if all_error_cols + len(names) != ncols:
+@@ -267,6 +306,32 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+     command_lines = ""
+     current_rows = None
+ 
++    # ISSUE13-004: logic obligation.
++    # ISSUE13-005: public-call-path obligation.
++    # - no pre-normalization exists before parser entry; `read` enters here with
++    #   user-supplied casing intact.
++    # - FSM states: `initial_comments` (before first table data),
++    #   `current_rows` (active rows), `command_lines` (command block), `comment_text`
++    #   (table-local comments), `err_specs` (parsed command offsets), `colnames` (schema).
++    # - For each `(line, datatype)`:
++    #   1) normalize line by trim + leading "!" removal for classification-independent
++    #      comment/data token extraction.
++    #   2) route by deterministic branch:
++    #      comment -> append raw stripped text to `comment_text`;
++    #      command -> append as-is to `command_lines`, and capture initial comment
++    #                handoff on first command.
++    #      data -> lazily compute err specs (only once), then parse value tokens into
++    #              row list.
++    #      new -> materialize table boundary and reset per-table collectors.
++    #   3) command dispatch check remains strict on token semantics, with only
++    #      `READ` + (`serr`|`terr`) accepted after lowercase normalization.
++    # - Value parsing branch stays unchanged:
++    #   - split in input order with requested delimiter;
++    #   - emit mask token "NO" only when token text exactly equals "NO";
++    #   - attempt int then float conversion to preserve current dtype inference order.
++    # - Failure path:
++    #   - no change in table shape/dtype from command token case changes; existing
++    #     branch rejections keep surfacing by existing `ValueError`.
+     for line, datatype in zip(lines, contents):
+         line = line.strip().lstrip("!")
+         # Is this a comment?
+@@ -275,6 +340,12 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+             continue
+ 
+         if datatype == "command":
++            # ISSUE13-002: pseudocode branch:
++            # - store command lines as read, without transforming case.
++            # - preserve comment handoff and existing multiple-command warning.
++            # ISSUE13-005:
++            # - preserve full raw command line text and whitespace shape.
++            # - do not mutate line content before later `command_key` normalization.
+             # The first time I find commands, I save whatever comments into
+             # The initial comments.
+             if command_lines == "":
+@@ -292,12 +363,38 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+         if datatype.startswith("data"):
+             # The first time I find data, I define err_specs
+             if err_specs == {} and command_lines != "":
++                # ISSUE13-002: pseudocode branch:
++                # - tokenize each captured command line.
++                # - if token count < 3, ignore as malformed/no-op.
++                # - normalize sub-key via lower() before comparing serr/terr.
++                # - parse indices as integers to build canonical `err_specs`.
++                # - canonical `err_specs` must be identical for mixed-case or
++                #   uppercase READ SERR/TERR commands.
++                # ISSUE13-003: logic obligation.
++                # - command dispatch is intentionally limited to serr/terr keys only.
++                # - after lower() normalization, any other key must not resolve to a
++                #   valid command handler.
++                # - because line-level recognition is strict, this branch should never
++                #   materialize an unrecognized command key; if it did, behavior must
++                #   remain reject/ignore rather than coercing to serr/terr.
++                # ISSUE13-005:
++                # - accept lower/mixed-case commands by canonicalizing `command[1]`
++                #   only; preserve `command[0]` and `command[2:]` as-is for the
++                #   acceptance semantics that already exist in this branch.
+                 for cline in command_lines.strip().split("\n"):
+                     command = cline.strip().split()
++
+                     # This should never happen, but just in case.
+                     if len(command) < 3:
+                         continue
+-                    err_specs[command[1].lower()] = [int(c) for c in command[2:]]
++
++                    # ISSUE13-001: recognize command sub-keys case-insensitively.
++                    if command[0].upper() != "READ":
++                        raise ValueError(f"Unrecognized QDP line: {cline}")
++                    command_key = command[1].lower()
++                    if command_key not in ("serr", "terr"):
++                        raise ValueError(f"Unrecognized QDP line: {cline}")
++                    err_specs[command_key] = [int(c) for c in command[2:]]
+             if colnames is None:
+                 colnames = _interpret_err_lines(err_specs, ncol, names=input_colnames)
+ 
+@@ -305,6 +402,10 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+                 current_rows = []
+ 
+             values = []
++            # ISSUE13-002: pseudocode branch:
++            # - parse row tokens in order using delimiter.
++            # - convert NO => masked, else parse as int then float.
++            # - semantics and output values are case-independent.
+             for v in line.split(delimiter):
+                 if v == "NO":
+                     values.append(np.ma.masked)
+@@ -415,9 +516,21 @@ def _read_table_qdp(qdp_file, names=None, table_id=None, delimiter=None):
+         )
+         table_id = 0
+ 
++    # ISSUE13-005: interface-preservation branch.
++    # - call entry is fixed: this function is always reached via the public
++    #   `Table.read(..., format='ascii.qdp')` path (or `QDP.read`) with no
++    #   pre-normalization shim.
++    # - delegate directly to `_get_tables_from_qdp_file`; no case-normalized or
++    #   alternate reader branch is introduced.
+     tables = _get_tables_from_qdp_file(
+         qdp_file, input_colnames=names, delimiter=delimiter
+     )
++    # ISSUE13-002: pseudocode branch:
++    # - selection contract: return `tables[table_id]` from parser output.
++    # - parsing invariants from mixed/lower-case READ SERR are enforced upstream.
++    # ISSUE13-004: logic obligation.
++    # - Preserve output ordering and indexing: return exactly the selected `table_id`
++    #   without re-sorting tables, converting dtypes, or mutating rows.
+ 
+     return tables[table_id]
+ 
+@@ -628,6 +741,9 @@ class QDP(basic.Basic):
+         self.delimiter = sep
+ 
+     def read(self, table):
++        # ISSUE13-005: API-entry invariant.
++        # - The public QDP format call path is fixed (`ascii.qdp` route), so this
++        #   method continues to hand raw lines straight to `_read_table_qdp`.
+         self.lines = self.inputter.get_lines(table, newline="\n")
+         return _read_table_qdp(
+             self.lines,
+2026-07-15 01:21:34,472 - INFO - Git diff changed after running eval script
+2026-07-15 01:21:34,472 - INFO - Grading answer for astropy__astropy-14365...
+2026-07-15 01:21:34,474 - INFO - report: {'astropy__astropy-14365': {'patch_is_None': False, 'patch_exists': True, 'patch_successfully_applied': True, 'resolved': False, 'tests_status': {'FAIL_TO_PASS': {'success': [], 'failure': ['astropy/io/ascii/tests/test_qdp.py::test_roundtrip[True]']}, 'PASS_TO_PASS': {'success': ['astropy/io/ascii/tests/test_qdp.py::test_get_tables_from_qdp_file', 'astropy/io/ascii/tests/test_qdp.py::test_roundtrip[False]', 'astropy/io/ascii/tests/test_qdp.py::test_read_example', 'astropy/io/ascii/tests/test_qdp.py::test_roundtrip_example', 'astropy/io/ascii/tests/test_qdp.py::test_roundtrip_example_comma', 'astropy/io/ascii/tests/test_qdp.py::test_read_write_simple', 'astropy/io/ascii/tests/test_qdp.py::test_read_write_simple_specify_name', 'astropy/io/ascii/tests/test_qdp.py::test_get_lines_from_qdp'], 'failure': []}, 'FAIL_TO_FAIL': {'success': [], 'failure': []}, 'PASS_TO_FAIL': {'success': [], 'failure': []}}}}
+Result for astropy__astropy-14365: resolved: False
+2026-07-15 01:21:34,474 - INFO - Attempting to stop container sweb.eval.astropy__astropy-14365.atlas-final-issue-13-attempt-0...
+2026-07-15 01:21:49,609 - INFO - Attempting to remove container sweb.eval.astropy__astropy-14365.atlas-final-issue-13-attempt-0...
+2026-07-15 01:21:49,626 - INFO - Container sweb.eval.astropy__astropy-14365.atlas-final-issue-13-attempt-0 removed.
+2026-07-15 01:21:49,626 - INFO - Attempting to remove image swebench/sweb.eval.x86_64.astropy_1776_astropy-14365:latest...
+2026-07-15 01:21:49,675 - INFO - Image swebench/sweb.eval.x86_64.astropy_1776_astropy-14365:latest removed.

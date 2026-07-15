@@ -1,0 +1,814 @@
+diff --git a/astropy/io/ascii/qdp.py b/astropy/io/ascii/qdp.py
+index 83a4f00..3e3bc41 100644
+--- a/astropy/io/ascii/qdp.py
++++ b/astropy/io/ascii/qdp.py
+@@ -60,6 +60,7 @@ def _line_type(line, delimiter=None):
+     ValueError: Unrecognized QDP line...
+     """
+     _decimal_re = r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?"
++
+     _command_re = r"READ [TS]ERR(\s+[0-9]+)+"
+ 
+     sep = delimiter
+@@ -68,19 +69,51 @@ def _line_type(line, delimiter=None):
+     _new_re = rf"NO({sep}NO)+"
+     _data_re = rf"({_decimal_re}|NO|[-+]?nan)({sep}({_decimal_re}|NO|[-+]?nan))*)"
+     _type_re = rf"^\s*((?P<command>{_command_re})|(?P<new>{_new_re})|(?P<data>{_data_re})?\s*(\!(?P<comment>.*))?\s*$"
+-    _line_type_re = re.compile(_type_re)
+     line = line.strip()
+     if not line:
+         return "comment"
+-    match = _line_type_re.match(line)
+-
++    match = re.match(_type_re, line)
++
++    # ISSUE13-005: public-call-path obligation.
++    # 1) Maintain current upstream call contract: `_line_type` receives raw input
++    #    from `Table.read(..., format='ascii.qdp')` or `QDP.read` directly.
++    # 2) Keep numeric/comment recognition on the strict grammar path; do not
++    #    accept lowercase/mixed-case by coercing non-command token semantics.
++    # 3) For command-only fallback, permit command-token case-insensitivity
++    #    locally without introducing any caller-side normalization.
+     if match is None:
++        ci_command_re = re.compile(rf"^\s*{_command_re}\s*$", flags=re.IGNORECASE)
++        if ci_command_re.match(line):
++            command = line.split()
++            if len(command) < 3:
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            if command[0].upper() != "READ":
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            command_key = command[1].lower()
++            if command_key not in ("serr", "terr"):
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            return "command"
+         raise ValueError(f"Unrecognized QDP line: {line}")
++
+     for type_, val in match.groupdict().items():
+         if val is None:
+             continue
+         if type_ == "data":
+             return f"data,{len(val.split(sep=delimiter))}"
++        if type_ == "command":
++            # ISSUE13-005: command dispatch obligation.
++            # - tokenize on whitespace from raw line (no pre-normalization).
++            # - keep VERB case-insensitive via upper() only for acceptance check.
++            # - persist sub-key canonicalization only through lower(), then gate to serr/terr.
++            command = line.split()
++            if len(command) < 3:
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            if command[0].upper() != "READ":
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            command_key = command[1].lower()
++            if command_key not in ("serr", "terr"):
++                raise ValueError(f"Unrecognized QDP line: {line}")
++            return type_
+         else:
+             return type_
+ 
+@@ -119,6 +152,13 @@ def _get_type_from_list_of_lines(lines, delimiter=None):
+         ...
+     ValueError: Inconsistent number of columns
+     """
++    # ISSUE13-004: logic obligation.
++    # 1) derive deterministic per-line type labels by calling `_line_type`.
++    # 2) enforce invariant: all observed data rows expose same column-count token
++    #    cardinality via separator-strict split.
++    # 3) if any data row has a different cardinality, propagate
++    #    `ValueError("Inconsistent number of columns")` unchanged.
++    # 4) if there is no data row, keep `ncol=None` to avoid introducing behavior.
+     types = [_line_type(line, delimiter=delimiter) for line in lines]
+     current_ncol = None
+     for type_ in types:
+@@ -200,7 +240,6 @@ def _interpret_err_lines(err_specs, ncols, names=None):
+ 
+         serr_cols = err_specs.pop("serr", [])
+         terr_cols = err_specs.pop("terr", [])
+-
+     if names is not None:
+         all_error_cols = len(serr_cols) + len(terr_cols) * 2
+         if all_error_cols + len(names) != ncols:
+@@ -267,6 +306,32 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+     command_lines = ""
+     current_rows = None
+ 
++    # ISSUE13-004: logic obligation.
++    # ISSUE13-005: public-call-path obligation.
++    # - no pre-normalization exists before parser entry; `read` enters here with
++    #   user-supplied casing intact.
++    # - FSM states: `initial_comments` (before first table data),
++    #   `current_rows` (active rows), `command_lines` (command block), `comment_text`
++    #   (table-local comments), `err_specs` (parsed command offsets), `colnames` (schema).
++    # - For each `(line, datatype)`:
++    #   1) normalize line by trim + leading "!" removal for classification-independent
++    #      comment/data token extraction.
++    #   2) route by deterministic branch:
++    #      comment -> append raw stripped text to `comment_text`;
++    #      command -> append as-is to `command_lines`, and capture initial comment
++    #                handoff on first command.
++    #      data -> lazily compute err specs (only once), then parse value tokens into
++    #              row list.
++    #      new -> materialize table boundary and reset per-table collectors.
++    #   3) command dispatch check remains strict on token semantics, with only
++    #      `READ` + (`serr`|`terr`) accepted after lowercase normalization.
++    # - Value parsing branch stays unchanged:
++    #   - split in input order with requested delimiter;
++    #   - emit mask token "NO" only when token text exactly equals "NO";
++    #   - attempt int then float conversion to preserve current dtype inference order.
++    # - Failure path:
++    #   - no change in table shape/dtype from command token case changes; existing
++    #     branch rejections keep surfacing by existing `ValueError`.
+     for line, datatype in zip(lines, contents):
+         line = line.strip().lstrip("!")
+         # Is this a comment?
+@@ -275,6 +340,12 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+             continue
+ 
+         if datatype == "command":
++            # ISSUE13-002: pseudocode branch:
++            # - store command lines as read, without transforming case.
++            # - preserve comment handoff and existing multiple-command warning.
++            # ISSUE13-005:
++            # - preserve full raw command line text and whitespace shape.
++            # - do not mutate line content before later `command_key` normalization.
+             # The first time I find commands, I save whatever comments into
+             # The initial comments.
+             if command_lines == "":
+@@ -292,12 +363,38 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+         if datatype.startswith("data"):
+             # The first time I find data, I define err_specs
+             if err_specs == {} and command_lines != "":
++                # ISSUE13-002: pseudocode branch:
++                # - tokenize each captured command line.
++                # - if token count < 3, ignore as malformed/no-op.
++                # - normalize sub-key via lower() before comparing serr/terr.
++                # - parse indices as integers to build canonical `err_specs`.
++                # - canonical `err_specs` must be identical for mixed-case or
++                #   uppercase READ SERR/TERR commands.
++                # ISSUE13-003: logic obligation.
++                # - command dispatch is intentionally limited to serr/terr keys only.
++                # - after lower() normalization, any other key must not resolve to a
++                #   valid command handler.
++                # - because line-level recognition is strict, this branch should never
++                #   materialize an unrecognized command key; if it did, behavior must
++                #   remain reject/ignore rather than coercing to serr/terr.
++                # ISSUE13-005:
++                # - accept lower/mixed-case commands by canonicalizing `command[1]`
++                #   only; preserve `command[0]` and `command[2:]` as-is for the
++                #   acceptance semantics that already exist in this branch.
+                 for cline in command_lines.strip().split("\n"):
+                     command = cline.strip().split()
++
+                     # This should never happen, but just in case.
+                     if len(command) < 3:
+                         continue
+-                    err_specs[command[1].lower()] = [int(c) for c in command[2:]]
++
++                    # ISSUE13-001: recognize command sub-keys case-insensitively.
++                    if command[0].upper() != "READ":
++                        raise ValueError(f"Unrecognized QDP line: {cline}")
++                    command_key = command[1].lower()
++                    if command_key not in ("serr", "terr"):
++                        raise ValueError(f"Unrecognized QDP line: {cline}")
++                    err_specs[command_key] = [int(c) for c in command[2:]]
+             if colnames is None:
+                 colnames = _interpret_err_lines(err_specs, ncol, names=input_colnames)
+ 
+@@ -305,6 +402,10 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
+                 current_rows = []
+ 
+             values = []
++            # ISSUE13-002: pseudocode branch:
++            # - parse row tokens in order using delimiter.
++            # - convert NO => masked, else parse as int then float.
++            # - semantics and output values are case-independent.
+             for v in line.split(delimiter):
+                 if v == "NO":
+                     values.append(np.ma.masked)
+@@ -415,9 +516,21 @@ def _read_table_qdp(qdp_file, names=None, table_id=None, delimiter=None):
+         )
+         table_id = 0
+ 
++    # ISSUE13-005: interface-preservation branch.
++    # - call entry is fixed: this function is always reached via the public
++    #   `Table.read(..., format='ascii.qdp')` path (or `QDP.read`) with no
++    #   pre-normalization shim.
++    # - delegate directly to `_get_tables_from_qdp_file`; no case-normalized or
++    #   alternate reader branch is introduced.
+     tables = _get_tables_from_qdp_file(
+         qdp_file, input_colnames=names, delimiter=delimiter
+     )
++    # ISSUE13-002: pseudocode branch:
++    # - selection contract: return `tables[table_id]` from parser output.
++    # - parsing invariants from mixed/lower-case READ SERR are enforced upstream.
++    # ISSUE13-004: logic obligation.
++    # - Preserve output ordering and indexing: return exactly the selected `table_id`
++    #   without re-sorting tables, converting dtypes, or mutating rows.
+ 
+     return tables[table_id]
+ 
+@@ -628,6 +741,9 @@ class QDP(basic.Basic):
+         self.delimiter = sep
+ 
+     def read(self, table):
++        # ISSUE13-005: API-entry invariant.
++        # - The public QDP format call path is fixed (`ascii.qdp` route), so this
++        #   method continues to hand raw lines straight to `_read_table_qdp`.
+         self.lines = self.inputter.get_lines(table, newline="\n")
+         return _read_table_qdp(
+             self.lines,
+diff --git a/astropy/io/ascii/qdp_issue13_001_architecture.md b/astropy/io/ascii/qdp_issue13_001_architecture.md
+new file mode 100644
+index 0000000..6206073
+--- /dev/null
++++ b/astropy/io/ascii/qdp_issue13_001_architecture.md
+@@ -0,0 +1,52 @@
++# ISSUE13-001 Architecture Artifact
++
++## Requirement-to-Architecture Map
++- ISSUE13-001 -> `astropy/io/ascii/qdp.py::_line_type` (command line classification boundary).
++- ISSUE13-001 -> `astropy/io/ascii/qdp.py::_get_tables_from_qdp_file` (command dispatch-to-state boundary).
++- ISSUE13-001 -> `astropy/io/ascii/tests/test_qdp.py:REQUIREMENT_VERIFICATION_MAP` (traceability boundary).
++
++## File and Module Placement
++- `astropy/io/ascii/qdp.py` owns parser ownership for QDP command token intake and dispatch routing.
++- `astropy/io/ascii/tests/test_qdp.py` owns requirement linkage and scenario-level verification entry points.
++- No new module is required for this obligation because behavior remains within the existing parser module seams.
++
++## Ownership Boundaries
++- ` _line_type` owns lexical classification only: raw line normalization and route classification.
++- `_get_type_from_list_of_lines` owns sequence typing orchestration.
++- `_get_tables_from_qdp_file` owns command block interpretation and transfer into `err_specs`.
++- `_interpret_err_lines` remains the downstream owner of column-name expansion based on `err_specs`.
++
++## Interface / Contract Artifacts
++- `Issue13-001` introduces an explicit command token normalization contract:
++  - command verb matching in `line_type` must be case-insensitive for supported verbs.
++  - command sub-key matching in dispatch must be case-insensitive for supported keys (`serr`, `terr`) before storing into `err_specs`.
++- Existing `err_specs` contract remains stable:
++  - accepted keys: `serr` (symmetric) and `terr` (two-sided).
++  - unknown or unsupported sub-keys keep the existing behavior (no new acceptance/rejection path in this issue).
++
++## Dependency Direction Notes
++- `_line_type` depends on regex compilation helpers and returns `{"comment","command","new","data,n"}` only.
++- `_get_tables_from_qdp_file` depends on `_get_type_from_list_of_lines` and later consumes `_interpret_err_lines`.
++- Dispatch decisions in `_get_tables_from_qdp_file` are the only incoming source for `err_specs`.
++- `_interpret_err_lines` remains downstream and does not influence parser classification.
++
++## Integration-Seam Stubs
++- Integration seam 1: command classification seam in `_line_type`.
++  - owner: `astropy/io/ascii/qdp.py`
++  - contract: classify command tokens independent of text case.
++- Integration seam 2: command-dispatch seam in `_get_tables_from_qdp_file`.
++  - owner: `astropy/io/ascii/qdp.py`
++  - contract: map command sub-key token to canonical keys (`serr`, `terr`) before `err_specs` population.
++
++## Scenario-to-Placement Traceability
++- Scenario 1 (`ReAd SeRr 1 2`) maps to:
++  - `_line_type` command recognition branch,
++  - `_get_tables_from_qdp_file` command-block accumulation and `err_specs` population.
++- Scenario 2 (mixed-case recognized sub-key in a valid shape) maps to:
++  - `_line_type` command route guard,
++  - `_get_tables_from_qdp_file` sub-key normalization and downstream `err_specs` handoff.
++
++## Completion Gate Status
++- All traced obligations in `ISSUE13-001` have concrete architectural homes.
++- Existing parser and test files provide direct requirement links.
++- One architecture artifact has been added: `astropy/io/ascii/qdp_issue13_001_architecture.md`.
+diff --git a/astropy/io/ascii/qdp_issue13_002_architecture.md b/astropy/io/ascii/qdp_issue13_002_architecture.md
+new file mode 100644
+index 0000000..49725f4
+--- /dev/null
++++ b/astropy/io/ascii/qdp_issue13_002_architecture.md
+@@ -0,0 +1,64 @@
++# ISSUE13-002 Architecture Artifact
++
++## Requirement-to-Architecture Map
++- ISSUE13-002 -> `astropy/io/ascii/qdp.py::_line_type` (command token normalization for mixed/lowercase `read serr`).
++- ISSUE13-002 -> `astropy/io/ascii/qdp.py::_get_tables_from_qdp_file` (command capture and `err_specs` canonicalization boundary).
++- ISSUE13-002 -> `astropy/io/ascii/qdp.py::_interpret_err_lines` (error-column expansion contract).
++- ISSUE13-002 -> `astropy/io/ascii/qdp.py::_read_table_qdp` (read-boundary selection contract).
++- ISSUE13-002 -> `astropy/io/ascii/tests/test_qdp.py:REQUIREMENT_VERIFICATION_MAP` (verification traceability surface).
++
++## File and Module Placement
++- `astropy/io/ascii/qdp.py` remains the ownership module for parsing semantics and table-shaping for QDP `READ SERR`.
++- `astropy/io/ascii/tests/test_qdp.py` remains the ownership module for scenario-level traceability for `ISSUE13-002`.
++- No new modules are required; all obligations are already scoped to the existing parser seams.
++
++## Ownership Boundaries
++- `_line_type` owns lexical command recognition boundaries and must remain neutral to case.
++- `_get_type_from_list_of_lines` owns line-type sequencing but does not interpret command meaning.
++- `_get_tables_from_qdp_file` owns command-block capture, `command_lines` parsing, and `err_specs` handoff.
++- `_interpret_err_lines` owns expansion from `err_specs` into column names and output column layout.
++- `_read_table_qdp` owns final output-table selection and returns the already-normalized parser result.
++
++## Interface / Contract Artifacts
++- Command contract:
++  - command lines beginning with `READ` + `SERR`/`TERR` are classified by `_line_type` independent of lexical case.
++  - `READ` sub-key matching in `_get_tables_from_qdp_file` normalizes to canonical lower-case keys (`serr`, `terr`).
++- Error-semantic contract:
++  - `_interpret_err_lines` derives `_err` for `serr` entries and `_perr`/`_nerr` for `terr` entries.
++  - the derived names and count must match canonical uppercase path for functionally equivalent input.
++- Numeric/token contract:
++  - value coercion uses numeric parsing rules that are not coupled to command casing.
++  - `NO` remains a masked sentinel after normalization of parser state.
++
++## Dependency Direction Notes
++- `_line_type` consumes no parser-local state and emits type tokens to `_get_type_from_list_of_lines`.
++- `_get_type_from_list_of_lines` depends on `_line_type` and passes `ncol` to downstream stages.
++- `_get_tables_from_qdp_file` depends on both `_get_type_from_list_of_lines` and `_interpret_err_lines`.
++- `_interpret_err_lines` is downstream-only from command capture and feeds `Table` construction.
++- `_read_table_qdp` is a top-level entry that depends on `_get_tables_from_qdp_file` only; no other parser contract direction is inverted.
++
++## Integration-Seam Skeletons
++- Integration seam 1: command-classification seam in `_line_type`.
++  - owner: `astropy/io/ascii/qdp.py`
++  - contract: regex and command-token route must accept mixed/lowercase `READ SERR` and `READ TERR` as valid command classes.
++- Integration seam 2: command-dispatch seam in `_get_tables_from_qdp_file`.
++  - owner: `astropy/io/ascii/qdp.py`
++  - contract: `serr`/`terr` detection and index capture must canonicalize tokens so mixed-case input yields a canonical `err_specs` map.
++- Integration seam 3: column-shape seam in `_interpret_err_lines`.
++  - owner: `astropy/io/ascii/qdp.py`
++  - contract: output columns and names for a given `err_specs` map are invariant across command case variants.
++
++## Scenario-to-Placement Traceability
++- Scenario 1 (`read serr 1 2`) maps to:
++  - `_line_type` for command detection,
++  - `_get_tables_from_qdp_file` for table-state capture and `err_specs`,
++  - `_interpret_err_lines` for resulting column expansion.
++- Scenario 2 (`READ SERR 1 2` vs `ReAd SeRr 1 2`) maps to:
++  - `_line_type` (case-insensitive command classification),
++  - `_get_tables_from_qdp_file` (`command_key = lower()` canonicalization before `err_specs`),
++  - `_read_table_qdp` (single output contract for parsed table identity/shape).
++
++## Completion Gate Status
++- All traced obligations in `ISSUE13-002` now have concrete architectural homes.
++- Traceability exists through parser + test entry points.
++- One architecture artifact has been created: `astropy/io/ascii/qdp_issue13_002_architecture.md`.
+diff --git a/astropy/io/ascii/qdp_issue13_003_architecture.md b/astropy/io/ascii/qdp_issue13_003_architecture.md
+new file mode 100644
+index 0000000..2231a38
+--- /dev/null
++++ b/astropy/io/ascii/qdp_issue13_003_architecture.md
+@@ -0,0 +1,61 @@
++# ISSUE13-003 Architecture Artifact
++
++## Requirement-to-Architecture Map
++- ISSUE13-003 -> `astropy/io/ascii/qdp.py::_line_type` (command validation boundary).
++- ISSUE13-003 -> `astropy/io/ascii/qdp.py::_get_tables_from_qdp_file` (dispatch boundary for parsed command keys).
++- ISSUE13-003 -> `astropy/io/ascii/qdp.py::_read_table_qdp` (read entry preserves upstream validation failures).
++- ISSUE13-003 -> `astropy/io/ascii/tests/test_qdp.py:REQUIREMENT_VERIFICATION_MAP` (traceability surface).
++
++## File and Module Placement
++- `astropy/io/ascii/qdp.py` remains the single ownership module for invalid-command protection after normalization.
++- `astropy/io/ascii/tests/test_qdp.py` remains the ownership surface for scenario-level acceptance traceability.
++- No new module is needed; both obligations are local to existing parser seams and regression-test hooks already in place.
++
++## Ownership Boundaries
++- `_line_type` owns all command-line lexical classification and is responsible for preserving the existing invalid-command failure path.
++- `_get_tables_from_qdp_file` owns command-line capture and conversion into `command_key`/`err_specs` state, with acceptance constrained to canonical keys.
++- `_read_table_qdp` remains the upstream caller boundary that relays parser failures (e.g., `Unrecognized QDP line`) unchanged.
++- `Table.read(..., format="ascii.qdp")` remains outside parser internals and must treat all non-localized validation errors as terminal.
++
++## Interface / Contract Artifacts
++- Command-classification contract:
++  - `_line_type` uses the command regex with case-insensitive matching for supported verbs.
++  - Any line that does not conform exactly to supported command grammar (`READ [TS]ERR <indices...>`) must follow the existing `ValueError("Unrecognized QDP line: ...")` path.
++  - Unknown verbs (for example, `READD`) and misspelled command sub-keys must not be normalized into a supported handler path.
++- Command-dispatch contract:
++  - `_get_tables_from_qdp_file` lowercases parsed sub-keys for canonical comparison only after command lines are accepted by `_line_type`.
++  - Only `("serr", "terr")` are permitted to populate `err_specs`; all other keys must remain no-op for dispatch.
++- Error-propagation contract:
++  - Failures remain on the existing invalid-command line, not rerouted into `serr`/`terr` semantics or alternative handlers.
++
++## Dependency Direction Notes
++- `_line_type` → `_get_type_from_list_of_lines` → `_get_tables_from_qdp_file` → `_interpret_err_lines`.
++- `_read_table_qdp` depends on `_get_tables_from_qdp_file` only; parse-rejection semantics flow one-way from `qdp.py` to caller.
++- No reverse dependency from `err_specs` back into line-type recognition; parsing controls are directional and remain local to `_line_type`.
++
++## Integration-Seam Skeletons
++- Integration seam 1: command-classification seam in `_line_type`.
++  - owner: `astropy/io/ascii/qdp.py`
++  - contract: strict command-token grammar and unchanged invalid-command error emission.
++- Integration seam 2: command-dispatch seam in `_get_tables_from_qdp_file`.
++  - owner: `astropy/io/ascii/qdp.py`
++  - contract: permissive lowercasing only for key comparison, hard allow-list of `serr` and `terr`.
++- Integration seam 3: parser-call boundary in `_read_table_qdp`.
++  - owner: `astropy/io/ascii/qdp.py`
++  - contract: propagate `ValueError` from parser path without fallback/coercion for unknown commands.
++
++## Scenario-to-Placement Traceability
++- Scenario 1 (`READD SERR 1 2 ...`) maps to:
++  - `_line_type` strict command grammar validation,
++  - direct `ValueError("Unrecognized QDP line: ...")` failure path,
++  - no transition into `_get_tables_from_qdp_file` dispatch.
++- Scenario 2 (valid command verb with misspelled sub-key) maps to:
++  - `_line_type` rejection in strict grammar check, or if any command token reaches downstream,
++  - `_get_tables_from_qdp_file` allow-list gate (`"serr"|"terr"` only),
++  - no execution of any valid handler.
++
++## Completion Gate Status
++- All logic obligations for `ISSUE13-003` are assigned to specific modules, functions, and integration seams.
++- The mapping remains requirement-traceable via existing test entries plus this architecture artifact.
++- One architecture artifact was created: `astropy/io/ascii/qdp_issue13_003_architecture.md`.
++- Parser topology and dependency direction stay intentionally unchanged for runtime behavior.
+diff --git a/astropy/io/ascii/qdp_issue13_004_architecture.md b/astropy/io/ascii/qdp_issue13_004_architecture.md
+new file mode 100644
+index 0000000..67dab4f
+--- /dev/null
++++ b/astropy/io/ascii/qdp_issue13_004_architecture.md
+@@ -0,0 +1,66 @@
++# ISSUE13-004 Architecture Artifact
++
++## Requirement-to-Architecture Map
++- ISSUE13-004 -> `astropy/io/ascii/qdp.py::_line_type` (command classification boundary for uppercase command tokens while preserving downstream data semantics).
++- ISSUE13-004 -> `astropy/io/ascii/qdp.py::_get_type_from_list_of_lines` (table-shape/type inference boundary under uppercase command input).
++- ISSUE13-004 -> `astropy/io/ascii/qdp.py::_interpret_err_lines` (ordered error-column naming/ordering contract tied to parsed indices).
++- ISSUE13-004 -> `astropy/io/ascii/qdp.py::_get_tables_from_qdp_file` (FSM/table-boundary and token parsing order for comments/whitespace-preserving behavior).
++- ISSUE13-004 -> `astropy/io/ascii/qdp.py::_get_lines_from_file` (input-source acquisition boundary; no behavior change to whitespace/comment treatment).
++- ISSUE13-004 -> `astropy/io/ascii/qdp.py::_read_table_qdp` (table selection and return-shape contract).
++- ISSUE13-004 -> `astropy/io/ascii/tests/test_qdp.py:REQUIREMENT_VERIFICATION_MAP` (traceability surface).
++
++## File and Module Placement
++- `astropy/io/ascii/qdp.py` remains the single ownership module for parser-semantics preservation across case-normalized command intake.
++- `astropy/io/ascii/tests/test_qdp.py` remains the ownership surface for scenario-level traceability to test placeholders already added.
++- No new modules are required because the concern is localized to existing parser seams and regression linkage.
++
++## Ownership Boundaries
++- `_line_type` owns command-token recognition and determines whether command lines are parsed as command, data, or comments.
++- `_get_type_from_list_of_lines` owns table typing and table boundary handling derived from command/data line sequence.
++- `_interpret_err_lines` owns conversion from normalized `serr/terr` index specs into explicit error-column names and ordering.
++- `_get_tables_from_qdp_file` owns state transitions among comment, command, data, and `new`-table boundaries, including token-to-row accumulation behavior.
++- `_get_lines_from_file` owns accepted input forms (`str` file path, inline string, iterable) and raw line iteration boundaries.
++- `_read_table_qdp` owns table-id selection and final API boundary into caller space.
++
++## Interface / Contract Artifacts
++- Command parsing contract:
++  - `READ` command classification remains case-insensitive only for supported tokens/branches.
++  - Unrecognized lines must remain on existing failure semantics (`ValueError("Unrecognized QDP line: ...")`) without introducing new rewrite paths.
++- Data typing and order contract:
++  - `_get_type_from_list_of_lines` preserves row-wise numeric parsing precedence and resulting dtypes for equivalent inputs.
++  - `_interpret_err_lines` must emit named error columns in existing order derived from parsed indices, with no reordering by parser case normalization.
++- Non-command tokenization contract:
++  - `_get_tables_from_qdp_file` retains current row token handling (including `NO`, int/float precedence) and does not alter behavior based on command token case.
++- Whitespace and comment contract:
++  - Neither `_get_lines_from_file` nor `_get_tables_from_qdp_file` may add new trimming/canonicalization that changes comment/blank handling, comment capture, or whitespace splitting behavior for existing valid uppercase fixtures.
++- Read contract:
++  - `_read_table_qdp` keeps exact indexing semantics (`table_id`) and returns the selected table without table-order mutation.
++
++## Dependency Direction Notes
++- `_line_type` → `_get_type_from_list_of_lines` → `_get_tables_from_qdp_file` → `_interpret_err_lines`.
++- `_get_lines_from_file` → `_get_tables_from_qdp_file` → `_read_table_qdp`.
++- `_read_table_qdp` is the top-level parser consumer and must not feed state back into upstream line-classification components.
++
++## Integration-Seam Skeletons
++- Integration seam 1: command-classification seam in `_line_type` (`astropy/io/ascii/qdp.py`).
++  - Contract: keep uppercase command acceptance aligned to canonical command set while preserving all non-command and malformed-line branches.
++- Integration seam 2: source-ingestion seam in `_get_lines_from_file` (`astropy/io/ascii/qdp.py`).
++  - Contract: retain source-typing branches and no new whitespace/comment transformations.
++- Integration seam 3: stream-state seam in `_get_tables_from_qdp_file` (`astropy/io/ascii/qdp.py`).
++  - Contract: preserve comment, command, data, and `new`-table transitions and preserve token parsing order and masking behavior.
++- Integration seam 4: table-contract seam in `_read_table_qdp` (`astropy/io/ascii/qdp.py`).
++  - Contract: preserve output-table shape, column order, column dtypes, and value sets for equivalent inputs across case variants.
++
++## Scenario-to-Placement Traceability
++- Scenario 1 (uppercase table + shape/type/order/value parity) maps to:
++  - `_line_type` -> `_get_type_from_list_of_lines` -> `_get_tables_from_qdp_file` -> `_interpret_err_lines` -> `_read_table_qdp`.
++  - Data-flow must remain deterministic with preserved row count, inferred dtypes, column order, and parsed values.
++- Scenario 2 (comments and mixed whitespace parity) maps to:
++  - `_get_lines_from_file` -> `_get_tables_from_qdp_file`.
++  - Parser boundary must keep comment token capture, whitespace splitting, and invalid-line behavior unchanged from baseline.
++
++## Completion Gate Status
++- All ISSUE13-004 logic obligations are assigned to concrete parser ownership boundaries and integration seams.
++- Changes remain traceable through `ISSUE13-004` requirement hooks in `test_qdp.py`.
++- New architecture artifact created: `astropy/io/ascii/qdp_issue13_004_architecture.md`.
++- Structural readiness is preserved: ownership, boundary, dependency direction, and scenario traceability are now explicit.
+diff --git a/astropy/io/ascii/qdp_issue13_005_architecture.md b/astropy/io/ascii/qdp_issue13_005_architecture.md
+new file mode 100644
+index 0000000..73b9b22
+--- /dev/null
++++ b/astropy/io/ascii/qdp_issue13_005_architecture.md
+@@ -0,0 +1,64 @@
++# ISSUE13-005 Architecture Artifact
++
++## Requirement-to-Architecture Map
++- ISSUE13-005 -> `astropy/io/ascii/qdp.py::QDP.read` (public call-path preservation on `ascii.qdp`).
++- ISSUE13-005 -> `astropy/io/ascii/qdp.py::_read_table_qdp` (single fixed parser handoff boundary from API entry).
++- ISSUE13-005 -> `astropy/io/ascii/qdp.py::_line_type` (raw command-line intake and case-insensitive command matching without global pre-normalization).
++- ISSUE13-005 -> `astropy/io/ascii/qdp.py::_get_tables_from_qdp_file` (raw command-line capture and delayed sub-key canonicalization only).
++- ISSUE13-005 -> `astropy/io/ascii/tests/test_qdp.py:REQUIREMENT_VERIFICATION_MAP` (traceability for scenario-level verification artifacts).
++
++## File and Module Placement
++- `astropy/io/ascii/qdp.py` remains the owning module for all public-entry and parser-semantics obligations for this requirement.
++- `astropy/io/ascii/tests/test_qdp.py` remains the verification and traceability ownership surface.
++- No new modules or adapters are introduced because the requirement constrains internal parser boundaries only.
++
++## Ownership Boundaries
++- `QDP.read` owns the reader registration boundary where external format dispatch enters the QDP reader.
++- `_read_table_qdp` owns the API-to-parser handoff contract and `table_id` return-table selection for this format.
++- `_line_type` owns raw line classification (comment/data/command/new) and command recognition gate.
++- `_get_tables_from_qdp_file` owns table-state transitions and command block accumulation, including preservation of raw command text.
++
++## Interface / Contract Artifacts
++- Public interface contract:
++  - Keep `Table.read(..., format="ascii.qdp")` and `QDP.read` as the direct entry path.
++  - Preserve behavior with no caller-facing preprocessing flag or utility step.
++- Internal call-path contract:
++  - `QDP.read` → `_read_table_qdp` → `_get_tables_from_qdp_file` with no alternate case-normalization branch.
++- Command parsing contract:
++  - `_line_type` may apply case-insensitive matching only for command syntax validation.
++  - Sub-key dispatch in downstream parsing continues to use canonical `lower()` only for comparison.
++  - No caller-side or global pre-normalization of the input line stream is introduced.
++- Error/shape contract:
++  - Parsing acceptance/rejection follows existing branches (e.g., `ValueError("Unrecognized QDP line: ...")`) and existing shape/dtype flow is unchanged.
++
++## Dependency Direction Notes
++- `Table.read(format="ascii.qdp")`/`QDP.read` depend on `_read_table_qdp`; parser internals do not feed back into registration.
++- `_read_table_qdp` depends on `_get_tables_from_qdp_file`; it returns `tables[table_id]` only.
++- `_get_tables_from_qdp_file` depends on `_line_type` for deterministic typing and receives raw lines, then internally normalizes only sub-key tokens for dispatch.
++
++## Integration-Seam Skeletons
++- Integration seam 1: external parser entry (`QDP.read`).
++  - Owner: `astropy/io/ascii/qdp.py`
++  - Contract: fixed route for `ascii.qdp`; no pre-normalization wrapper.
++- Integration seam 2: read boundary (`_read_table_qdp`).
++  - Owner: `astropy/io/ascii/qdp.py`
++  - Contract: direct delegation into `_get_tables_from_qdp_file` and stable table selection by index.
++- Integration seam 3: command-classification seam (`_line_type`).
++  - Owner: `astropy/io/ascii/qdp.py`
++  - Contract: classify from raw, stripped line; command acceptance can be case-insensitive, non-command tokenization remains strict.
++- Integration seam 4: command-dispatch seam (`_get_tables_from_qdp_file`).
++  - Owner: `astropy/io/ascii/qdp.py`
++  - Contract: store command lines unchanged; normalize only `command[1]` for serr/terr checks.
++
++## Scenario-to-Placement Traceability
++- Scenario 1 (lowercase command file via `Table.read(format="ascii.qdp")`):
++  - Maps to `QDP.read` -> `_read_table_qdp` -> `_get_tables_from_qdp_file` -> `_line_type` -> data assembly.
++  - Acceptance is satisfied by existing read route and parser command case tolerance.
++- Scenario 2 (lowercase/mixed-case and uppercase command files through same read shape):
++  - Maps to same call-path above; `_line_type` and downstream sub-key handling must provide equivalent parse outcomes.
++
++## Completion Gate Status
++- All ISSUE13-005 logic obligations are assigned to explicit ownership boundaries and seams.
++- Requirement traceability remains in `astropy/io/ascii/tests/test_qdp.py` through existing mapping entries.
++- Architecture artifact updated/created: `astropy/io/ascii/qdp_issue13_005_architecture.md`.
++- Structural readiness is met for implementation: boundary, ownership, dependency direction, and scenario traceability are explicit.
+diff --git a/astropy/io/ascii/tests/test_qdp.py b/astropy/io/ascii/tests/test_qdp.py
+index ef24e6f..d637cd8 100644
+--- a/astropy/io/ascii/tests/test_qdp.py
++++ b/astropy/io/ascii/tests/test_qdp.py
+@@ -245,3 +245,254 @@ def test_get_lines_from_qdp(tmp_path):
+         assert file_output[i] == line
+         assert list_output[i] == line
+         assert text_output[i] == line
++
++
++# Requirement-to-verification mapping for traceability in SPARC phase 05.
++REQUIREMENT_VERIFICATION_MAP = {
++    "ISSUE13-001": [
++        "test_issue13_001_case_insensitive_read_serr_command_verb_dispatch",
++        "test_issue13_001_case_insensitive_read_command_sub_key_dispatch",
++    ],
++    "ISSUE13-002": [
++        "test_issue13_002_issue_spec_reads_mixed_case_read_serr_and_succeeds",
++        "test_issue13_002_issue_spec_columns_and_error_semantics_match_uppercase_reference",
++    ],
++    "ISSUE13-003": [
++        "test_issue13_003_issue_spec_rejects_normalized_unknown_command_via_unrecognized_qdp_line",
++        "test_issue13_003_issue_spec_rejects_invalid_read_subkey_after_case_normalization",
++    ],
++    "ISSUE13-004": [
++        "test_issue13_004_issue_spec_preserves_uppercase_qdp_table_shape_type_order_and_values_after_case_insensitive_read_path",
++        "test_issue13_004_issue_spec_preserves_comments_and_whitespace_semantics_with_uppercase_qdp_and_mixed_spacing",
++    ],
++    "ISSUE13-005": [
++        "test_issue13_005_issue_spec_preserves_public_call_path_for_ascii_qdp_without_pre_normalization",
++        "test_issue13_005_issue_spec_accepts_lowercase_and_mixed_case_qdp_same_read_shape_format_ascii_qdp",
++    ],
++}
++
++
++def test_issue13_001_case_insensitive_read_serr_command_verb_dispatch():
++    """ISSUE13-001: mixed-case READ command verbs dispatch via same handler path."""
++    qdp = """
++    ReAd SeRr 1 2
++    10 20 30 40
++    11 21 31 41
++    """
++
++    qdp_upper = """
++    READ SERR 1 2
++    10 20 30 40
++    11 21 31 41
++    """
++
++    lower = Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
++    upper = Table.read(qdp_upper, format="ascii.qdp", table_id=0, names=["x", "y"])
++
++    assert lower.colnames == upper.colnames
++    assert np.allclose(lower["x_err"], upper["x_err"])
++    assert np.allclose(lower["y_err"], upper["y_err"])
++    assert np.allclose(lower["x"], upper["x"])
++    assert np.allclose(lower["y"], upper["y"])
++
++
++def test_issue13_001_case_insensitive_read_command_sub_key_dispatch():
++    """ISSUE13-001: mixed-case READ sub-keys dispatch via same recognized sub-key path."""
++    qdp = """
++    READ SeRr 1 2
++    100 200 300 400
++    101 201 301 401
++    """
++
++    qdp_upper = """
++    READ SERR 1 2
++    100 200 300 400
++    101 201 301 401
++    """
++
++    lower = Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
++    upper = Table.read(qdp_upper, format="ascii.qdp", table_id=0, names=["x", "y"])
++
++    assert lower.colnames == upper.colnames
++    assert np.allclose(lower["x_err"], upper["x_err"])
++    assert np.allclose(lower["y_err"], upper["y_err"])
++    assert np.allclose(lower["x"], upper["x"])
++    assert np.allclose(lower["y"], upper["y"])
++
++
++def test_issue13_002_issue_spec_reads_mixed_case_read_serr_and_succeeds():
++    """ISSUE13-002: lowercase/mixed-case read serr command succeeds with ascii.qdp parsing."""
++    lower_case = """
++    read serr 1 2
++    1 0.5 1 0.5
++    """
++    mixed_case = """
++    ReAd SeRr 1 2
++    1 0.5 1 0.5
++    """
++    expected = Table.read(mixed_case, format="ascii.qdp", names=["x", "y"], table_id=0)
++    result = Table.read(lower_case, format="ascii.qdp", names=["x", "y"], table_id=0)
++
++    assert result.colnames == ["x", "x_err", "y", "y_err"]
++    assert len(result) == 1
++    assert np.allclose(result["x"], [1])
++    assert np.allclose(result["x_err"], [0.5])
++    assert np.allclose(result["y"], [1])
++    assert np.allclose(result["y_err"], [0.5])
++    assert result.colnames == expected.colnames
++    assert [name for name in result.colnames if name.endswith("_err")] == ["x_err", "y_err"]
++    assert np.ma.allequal(result["x"], expected["x"])
++    assert np.ma.allequal(result["x_err"], expected["x_err"])
++    assert np.ma.allequal(result["y"], expected["y"])
++    assert np.ma.allequal(result["y_err"], expected["y_err"])
++
++
++def test_issue13_002_issue_spec_columns_and_error_semantics_match_uppercase_reference():
++    """ISSUE13-002: mixed-case read serr output matches READ SERR output for columns and errors."""
++    qdp_lower = """
++    read serr 1 2
++    1 0.5 1 0.5
++    2 0.75 2 0.75
++    """
++    qdp_upper = """
++    READ SERR 1 2
++    1 0.5 1 0.5
++    2 0.75 2 0.75
++    """
++    table_lower = Table.read(qdp_lower, format="ascii.qdp", names=["x", "y"], table_id=0)
++    table_upper = Table.read(qdp_upper, format="ascii.qdp", names=["x", "y"], table_id=0)
++
++    assert table_lower.colnames == table_upper.colnames
++    assert len(table_lower) == len(table_upper) == 2
++    for name in table_lower.colnames:
++        assert np.ma.allequal(table_lower[name], table_upper[name])
++    assert "_err" in table_lower.colnames
++    assert "x_err" in table_lower.colnames
++    assert "y_err" in table_lower.colnames
++
++
++def test_issue13_003_issue_spec_rejects_normalized_unknown_command_via_unrecognized_qdp_line():
++    """ISSUE13-003: unknown command should follow Unrecognized QDP line path after normalization."""
++    qdp = """
++    READD SERR 1 2
++    1 2 3
++    """
++
++    with pytest.raises(ValueError, match="Unrecognized QDP line"):
++        Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
++
++
++def test_issue13_003_issue_spec_rejects_invalid_read_subkey_after_case_normalization():
++    """ISSUE13-003: misspelled READ sub-key should remain rejected after case normalization."""
++    qdp = """
++    READ SeRrR 1 2
++    1 2 3
++    """
++
++    with pytest.raises(ValueError, match="Unrecognized QDP line"):
++        Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
++
++
++def test_issue13_004_issue_spec_preserves_uppercase_qdp_table_shape_type_order_and_values_after_case_insensitive_read_path():
++    """ISSUE13-004: Scenario 1 - preserve uppercase parsing behavior and table metadata-free shape/type/order."""
++    uppercase_qdp = """
++    ! Baseline uppercase fixture
++    READ SERR 1
++    1    10.5   100
++    2    20     200
++    NO NO NO
++    """
++    mixed_case_qdp = """
++    ! Baseline uppercase fixture
++    ReAd sErR 1
++    1    10.5   100
++    2    20     200
++    NO NO NO
++    """
++
++    table_upper = Table.read(
++        uppercase_qdp, format="ascii.qdp", table_id=0, names=["x", "y"]
++    )
++    table_mixed = Table.read(
++        mixed_case_qdp, format="ascii.qdp", table_id=0, names=["x", "y"]
++    )
++
++    assert table_upper.colnames == ["x", "x_err", "y"] == table_mixed.colnames
++    assert len(table_upper) == len(table_mixed) == 2
++    assert table_upper["x"].dtype == table_mixed["x"].dtype
++    assert table_upper["x_err"].dtype == table_mixed["x_err"].dtype
++    assert table_upper["y"].dtype == table_mixed["y"].dtype
++    assert np.ma.allequal(table_upper["x"], table_mixed["x"])
++    assert np.ma.allequal(table_upper["x_err"], table_mixed["x_err"])
++    assert np.ma.allequal(table_upper["y"], table_mixed["y"])
++    assert np.allclose(table_upper["x"], [1, 2])
++    assert np.allclose(table_upper["y"], [100, 200])
++
++
++def test_issue13_004_issue_spec_preserves_comments_and_whitespace_semantics_with_uppercase_qdp_and_mixed_spacing():
++    """ISSUE13-004: Scenario 2 - preserve comments and whitespace parsing semantics for uppercase inputs."""
++    qdp = """
++    !  initial comment
++    !\tsecond comment with tabs
++    READ    SERR   1
++    !\ttable comment
++    1 \t\t 10.5   100
++    2   \t20      \t200
++    NO    NO   NO
++    """
++
++    table = Table.read(qdp, format="ascii.qdp", table_id=0)
++
++    assert table.meta["initial_comments"] == [
++        "initial comment",
++        "second comment with tabs",
++    ]
++    assert table.meta["comments"] == ["table comment"]
++    assert table.colnames == ["col1", "col1_err", "col2"]
++    assert len(table) == 2
++    assert np.allclose(table["col1"], [1, 2])
++    assert np.ma.allequal(table["col1_err"], np.ma.array([10.5, 20.0]))
++    assert np.allclose(table["col2"], [100, 200])
++
++
++def test_issue13_005_issue_spec_preserves_public_call_path_for_ascii_qdp_without_pre_normalization():
++    """ISSUE13-005: Table.read(..., format='ascii.qdp') handles lowercase command input as-is."""
++    qdp = """
++    read serr 1 2
++    1 0.5 1 0.5
++    """
++
++    parsed = Table.read(qdp, format="ascii.qdp", names=["x", "y"], table_id=0)
++
++    assert parsed.colnames == ["x", "x_err", "y", "y_err"]
++    assert len(parsed) == 1
++    assert np.allclose(parsed["x"], [1.0])
++    assert np.allclose(parsed["x_err"], [0.5])
++    assert np.allclose(parsed["y"], [1.0])
++    assert np.allclose(parsed["y_err"], [0.5])
++
++
++def test_issue13_005_issue_spec_accepts_lowercase_and_mixed_case_qdp_same_read_shape_format_ascii_qdp():
++    """ISSUE13-005: lowercase and mixed-case QDP inputs should succeed with format='ascii.qdp' no preprocessing."""
++    qdp_lower = """
++    read SeRr 1 2
++    1 0.5 1 0.5
++    2 0.75 2 0.75
++    """
++    qdp_upper = """
++    READ SERR 1 2
++    1 0.5 1 0.5
++    2 0.75 2 0.75
++    """
++
++    lower = Table.read(
++        qdp_lower, format="ascii.qdp", table_id=0, names=["x", "y"]
++    )
++    upper = Table.read(
++        qdp_upper, format="ascii.qdp", table_id=0, names=["x", "y"]
++    )
++
++    assert lower.shape == upper.shape
++    assert lower.colnames == upper.colnames == ["x", "x_err", "y", "y_err"]
++    for column in lower.colnames:
++        assert np.ma.allequal(lower[column], upper[column])
