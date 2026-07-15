@@ -357,7 +357,34 @@ def test_wcsxform_004_wcs_pix2world_non_empty_inputs_preserve_axes_order_shape_a
     Obligation: enforce traceability for non-empty `wcs_pix2world` calls (scalar/list/array)
     that must retain axis order, return type, and shape after empty-input handling changes.
     """
-    assert True
+    w = wcs.WCS(naxis=2)
+    origin = 1
+
+    x_scalar = 11.0
+    y_scalar = 12.0
+    scalar_world = w.wcs_pix2world(x_scalar, y_scalar, origin)
+    assert isinstance(scalar_world, list)
+    assert len(scalar_world) == 2
+
+    x = np.array([[1.0, 2.0], [3.0, 4.0]])
+    y = np.array([[5.0, 6.0], [7.0, 8.0]])
+    list_world = w.wcs_pix2world(x, y, origin)
+    assert isinstance(list_world, list)
+    assert len(list_world) == 2
+    assert list_world[0].shape == x.shape
+    assert list_world[1].shape == y.shape
+
+    scalar_reference = w.wcs_pix2world(np.array([[x_scalar, y_scalar]]), origin)
+    packed_input = np.column_stack([x.ravel(), y.ravel()])
+    packed_world = w.wcs_pix2world(packed_input, origin)
+
+    assert_allclose(scalar_world[0], scalar_reference[:, 0])
+    assert_allclose(scalar_world[1], scalar_reference[:, 1])
+    assert_allclose(list_world[0], packed_world[:, 0].reshape(x.shape))
+    assert_allclose(list_world[1], packed_world[:, 1].reshape(y.shape))
+
+    assert scalar_world[0].shape == (1,)
+    assert scalar_world[1].shape == (1,)
 
 
 def test_wcsxform_004_wcs_pix2world_mixed_scalar_list_array_outputs_remain_structurally_equivalent():
@@ -366,7 +393,29 @@ def test_wcsxform_004_wcs_pix2world_mixed_scalar_list_array_outputs_remain_struc
     Obligation: trace the mixed-container non-empty behavior contract (`scalar`, `list`,
     and `array` variants) as a non-regressing baseline across the change.
     """
-    assert True
+    w = wcs.WCS(naxis=2)
+    origin = 0
+
+    scalar = 2.0
+    list_coords = [10.0, 11.0, 12.0]
+    array_coords = np.array(list_coords, dtype=float)
+    scalar_list = w.wcs_pix2world(scalar, list_coords, origin)
+    list_array = w.wcs_pix2world([scalar] * len(list_coords), array_coords, origin)
+    array_scalar = w.wcs_pix2world(np.array([scalar] * len(list_coords)), scalar, origin)
+    reference = w.wcs_pix2world(np.array([scalar] * len(list_coords)), array_coords, origin)
+
+    for outputs in (scalar_list, list_array, array_scalar, reference):
+        assert isinstance(outputs, list)
+        assert len(outputs) == 2
+        assert outputs[0].shape == (len(list_coords),)
+        assert outputs[1].shape == (len(list_coords),)
+
+    assert_allclose(scalar_list[0], list_array[0])
+    assert_allclose(scalar_list[1], list_array[1])
+    assert_allclose(scalar_list[0], array_scalar[0])
+    assert_allclose(scalar_list[1], array_scalar[1])
+    assert_allclose(scalar_list[0], reference[0])
+    assert_allclose(scalar_list[1], reference[1])
 
 
 def test_wcsxform_003_wcs_pix2world_axis_count_mismatch_with_empty_axis_raises_shape_validation():
