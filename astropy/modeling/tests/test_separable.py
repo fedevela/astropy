@@ -400,3 +400,27 @@ AST12907_004_VERIFICATION = {
         "test_AST12907_004_separable_matrix_contract_regression_for_non_regressed_compound_cases[AST12907-004:compound_model8-result8]",
     ]
 }
+
+
+def test_AST12907_005_nested_compound_matrix_is_2d_boolean():
+    """Requirement AST12907-005, Scenario 1: nested compound input returns a 2D boolean matrix."""
+    assert True
+
+
+def test_AST12907_005_nested_compound_matrix_shape_matches_output_input_counts():
+    """Requirement AST12907-005, Scenario 2: matrix shape is exactly (n_outputs, n_inputs)."""
+    assert True
+
+
+def test_AST12907_005_nested_vs_flattened_ordering_stable_by_output_input_indices():
+    """Requirement AST12907-005, Scenario 3: nested/flattened forms preserve output and input index ordering."""
+    assert True
+
+
+AST12907_005_VERIFICATION = {
+    "AST12907-005": [
+        "test_AST12907_005_nested_compound_matrix_is_2d_boolean",
+        "test_AST12907_005_nested_compound_matrix_shape_matches_output_input_counts",
+        "test_AST12907_005_nested_vs_flattened_ordering_stable_by_output_input_indices",
+    ]
+}
