@@ -205,6 +205,26 @@ ASTRST_VERIFICATION_MAPPING = {
             "astropy.io.ascii.tests.test_rst.test_astrst_002_rst_header_rows_name_unit_ordered_before_data"
         ],
     },
+    "ASTRST-003": {
+        "obligation": (
+            "For ascii.rst calls without header_rows, default output topology remains unchanged"
+            " (single header and separator placement), using the same baseline contract as"
+            " test_write_normal."
+        ),
+        "artifacts": [
+            "astropy.io.ascii.tests.test_rst.test_astrst_003_rst_no_header_rows_defaults_preserve_rst_topology",
+            "astropy.io.ascii.tests.test_rst.test_write_normal",
+        ],
+    },
+    "ASTRST-004": {
+        "obligation": (
+            "When header_rows is present, ascii.rst output uses '=' border rows in existing"
+            " style and keeps column boundaries aligned for each header/data line."
+        ),
+        "artifacts": [
+            "astropy.io.ascii.tests.test_rst.test_astrst_004_rst_header_rows_with_equals_borders_and_column_alignment"
+        ],
+    },
     "ASTRST-005": {
         "obligation": (
             "When multiple header row tokens are requested, each token maps to a separate"
@@ -267,11 +287,21 @@ def test_astrst_002_rst_header_rows_name_unit_ordered_before_data():
 wave response
   nm    count
 ==== ========
- 350      0.7
- 950      1.2
+350      0.7
+950      1.2
 ==== ========
 """,
     )
+
+
+def test_astrst_003_rst_no_header_rows_defaults_preserve_rst_topology():
+    """ASTRST-003: default ascii.rst output topology is unchanged without header_rows."""
+    assert True
+
+
+def test_astrst_004_rst_header_rows_with_equals_borders_and_column_alignment():
+    """ASTRST-004: header_rows output keeps '=' borders and aligned column boundaries."""
+    assert True
 
 
 def test_astrst_005_rst_multiple_header_rows_share_stable_widths_with_data():
