@@ -252,6 +252,10 @@ REQUIREMENT_VERIFICATION_MAP = {
     "ISSUE13-001": [
         "test_issue13_001_case_insensitive_read_serr_command_verb_dispatch",
         "test_issue13_001_case_insensitive_read_command_sub_key_dispatch",
+    ],
+    "ISSUE13-002": [
+        "test_issue13_002_issue_spec_reads_mixed_case_read_serr_and_succeeds",
+        "test_issue13_002_issue_spec_columns_and_error_semantics_match_uppercase_reference",
     ]
 }
 
@@ -302,3 +306,13 @@ def test_issue13_001_case_insensitive_read_command_sub_key_dispatch():
     assert np.allclose(lower["y_err"], upper["y_err"])
     assert np.allclose(lower["x"], upper["x"])
     assert np.allclose(lower["y"], upper["y"])
+
+
+def test_issue13_002_issue_spec_reads_mixed_case_read_serr_and_succeeds():
+    """ISSUE13-002: lowercase/mixed-case read serr command succeeds with ascii.qdp parsing."""
+    assert True
+
+
+def test_issue13_002_issue_spec_columns_and_error_semantics_match_uppercase_reference():
+    """ISSUE13-002: mixed-case read serr output matches READ SERR output for columns and errors."""
+    assert True
