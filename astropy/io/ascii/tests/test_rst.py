@@ -253,9 +253,55 @@ def test_astrst_001_rst_writer_header_rows_supported():
 
 def test_astrst_002_rst_header_rows_name_unit_ordered_before_data():
     """ASTRST-002: ascii.rst writes requested header rows in request order before data lines."""
-    assert True
+    table = QTable()
+    table["wave"] = [350, 950] * u.nm
+    table["response"] = [0.7, 1.2] * u.count
+
+    out = StringIO()
+    ascii.write(table, out, format="ascii.rst", header_rows=["name", "unit"])
+
+    assert_equal_splitlines(
+        out.getvalue(),
+        """\
+==== ========
+wave response
+  nm    count
+==== ========
+ 350      0.7
+ 950      1.2
+==== ========
+""",
+    )
 
 
 def test_astrst_005_rst_multiple_header_rows_share_stable_widths_with_data():
     """ASTRST-005: ascii.rst keeps header line count and column widths stable and aligned."""
-    assert True
+    table = QTable()
+    table["ab"] = [1, 2]
+    table["cd"] = [300, 400]
+    table["ab"].description = "wide"
+    table["cd"].description = "extremely_long"
+    table["ab"].unit = u.m
+    table["cd"].unit = u.K
+
+    header_rows = ["name", "description", "unit"]
+
+    out = StringIO()
+    ascii.write(table, out, format="ascii.rst", header_rows=header_rows)
+    lines = out.getvalue().splitlines()
+
+    expected = [
+        "=" * 4 + " " + "=" * 14,
+        f"{'ab':>4} {'cd':>14}",
+        f"{'wide':>4} {'extremely_long':>14}",
+        f"{'m':>4} {'K':>14}",
+        "=" * 4 + " " + "=" * 14,
+        f"{1:>4} {300:>14}",
+        f"{2:>4} {400:>14}",
+        "=" * 4 + " " + "=" * 14,
+    ]
+
+    assert lines == expected
+    assert len(lines[1 : 1 + len(header_rows)]) == len(header_rows)
+    border_len = len(lines[0])
+    assert all(len(line) == border_len for line in lines)
