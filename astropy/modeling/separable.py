@@ -148,6 +148,13 @@ def _flatten_ampersand_chain(transform):
     #   - otherwise append node as a leaf operand.
     # Invariant:
     # - flattening captures associativity-only rewrites without creating new coupling.
+    # AST12907-003:
+    # - this sequence is the required determinism point for nested cases behind
+    #   test_separable[compound_model6-result6] and
+    #   test_separable[compound_model9-result9]:
+    #   input tree shape must only affect traversal ordering, not matrix semantics.
+    # - no local transformation failure handling is introduced; non-ampersand
+    #   branches remain terminal operands and are delegated to downstream logic.
     operands = []
     stack = [transform]
     while stack:
@@ -361,16 +368,27 @@ def _separable(transform):
     elif isinstance(transform, CompoundModel):
         if transform.op == '&':
             # AST12907-002.S1/S2: nested '&' must preserve independent right-hand linear block.
-            # Control flow:
-            # - flatten nested '&' nodes into ordered operands.
-            # - initialize state = separable matrix of first operand.
-            # - fold remaining operands with _operators['&'] in order.
-            # Failure safety:
-            # - if any operand raises ModelDefinitionError downstream, propagation remains unchanged.
-            # Required post-condition:
-            # - matrix entries (2,3) and (3,2) stay False for
-            #   m.Pix2Sky_TAN() & (m.Linear1D(10) & m.Linear1D(5));
-            # - flattened and nested forms must remain matrix-equal.
+            # AST12907-003.S1/S2: baseline regression stability for compound_model6-result6 / result9.
+            # Inputs:
+            # - transform: CompoundModel with op '&'.
+            # State model:
+            # - state_matrix := _separable(operands[0]) after flatten.
+            # - loop_idx from 1..(len(operands)-1).
+            # Deterministic transition:
+            # - IF operands length <= 1:
+            #     return _separable(transform) via direct recursion/leaf handling.
+            # - ELSE:
+            #     operands <- _flatten_ampersand_chain(transform)
+            #     state_matrix <- _separable(operands[0])
+            #     FOR each operand in operands[1:]:
+            #         next_matrix <- _separable(operand)
+            #         state_matrix <- _operators['&'](state_matrix, next_matrix)
+            #     RETURN state_matrix.
+            # Required post-conditions (traceable to AST12907-003 cases):
+            # - nested form and flattened form produce identical matrix.
+            # - no new cross-block coupling may be introduced for baseline fixtures.
+            # Failure path:
+            # - propagate ModelDefinitionError or similar exceptions unchanged.
             operands = _flatten_ampersand_chain(transform)
             separable_matrix = _separable(operands[0])
             for operand in operands[1:]:
