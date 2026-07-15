@@ -517,6 +517,14 @@ class _BaseHDU(metaclass=_BaseHDUMeta):
         # way of knowing for sure
         modified = self._header._modified or self._data_loaded
 
+        # DEXP-002 decision graph:
+        # IF checksum == 'remove':
+        #   clear checksum/datasum headers
+        # ELIF (modified OR new OR stale checksum):
+        #   request add_checksum/add_datasum
+        #   => uses _calculate_datasum output as primary data source
+        # CONTRACT: for D-format ASCII tables, _calculate_datasum must read
+        # post-conversion output bytes from self.data, not an earlier local temp.
         if checksum == 'remove':
             if checksum_keyword in self._header:
                 del self._header[checksum_keyword]
@@ -1333,6 +1341,25 @@ class _ValidHDU(_BaseHDU, _Verify):
         Calculate the value for the ``DATASUM`` card in the HDU.
         """
 
+        # DEXP-002 shared checksum contract:
+        # - Goal: checksum bytes must observe the final serialized payload
+        #   prepared for write.
+        # - INPUT state:
+        #     IF _data_loaded => in-memory data is available
+        #     ELSE => payload must be read from backing bytes
+        # - FLOW:
+        #     IF _data_loaded:
+        #         return _compute_checksum(self.data.view('ubyte'))
+        #     ELSE IF self.size > 0:
+        #         raw_data = _get_raw_data(self._data_size, 'ubyte',
+        #                                 self._data_offset)
+        #         return _compute_checksum(raw_data)
+        #     ELSE:
+        #         return 0
+        # - Contract with _update_checksum callers:
+        #     checksum metadata must reflect bytes supplied by this routine, so
+        #     upstream writers must ensure serialization has already been
+        #     finalized when _data_loaded path is used.
         if not self._data_loaded:
             # This is the case where the data has not been read from the file
             # yet.  We find the data in the file, read it, and calculate the

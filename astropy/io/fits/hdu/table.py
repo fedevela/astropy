@@ -517,6 +517,14 @@ class _TableBaseHDU(ExtensionHDU, _TableLikeHDU):
         if self._has_data:
             self.data._scale_back(
                 update_heap_pointers=not self._manages_own_heap)
+            # DEXP-002 pseudocode:
+            # - Owner boundary: _TableBaseHDU._prewriteto => ASCII/Binary writer.
+            # - STEP 1: call self.data._scale_back(...)
+            #   => materializes `self.data` payload bytes in canonical output form.
+            # - STEP 2: write-path consumes this in-memory payload; checksum path
+            #   must read from the same `self.data` bytes later.
+            # - HANDOFF: do not route downstream serialization/checksum through
+            #   a short-lived local representation of a single field.
             # check TFIELDS and NAXIS2
             self._header['TFIELDS'] = len(self.data._coldefs)
             self._header['NAXIS2'] = self.data.shape[0]
@@ -782,6 +790,18 @@ class TableHDU(_TableBaseHDU):
         """
 
         if self._has_data:
+            # DEXP-002 checksum-flow pseudocode:
+            # IF has ASCII table data:
+            #   bytes_array = self.data.view(np.ndarray, dtype=np.ubyte)
+            #   padding = zero-width blank bytes aligned to FITS block
+            #   d = append(bytes_array, padding)
+            #   cs = _compute_checksum(d)
+            #   RETURN cs
+            # ELSE:
+            #   DEFER to BaseHDU._calculate_datasum
+            # CONTRACT: bytes_array is expected to include the serialized field
+            # bytes after _scale_back_ascii conversion (including D-exponent
+            # replacement for D-format fields).
             # We have the data to be used.
             # We need to pad the data to a block length before calculating
             # the datasum.
@@ -927,6 +947,11 @@ class BinTableHDU(_TableBaseHDU):
                 # to a slower row-by-row write
                 self._writedata_by_row(fileobj)
             else:
+                # DEXP-002 write-path contract:
+                # SOURCE OF TRUTH: `data` passed to writearray() must already
+                # contain post-conversion serialized bytes. For D-formats this
+                # means exponent separators are 'D'.
+                # DO NOT switch to a detached per-field temporary as output source.
                 fileobj.writearray(data)
                 # write out the heap of variable length array columns this has
                 # to be done after the "regular" data is written (above)

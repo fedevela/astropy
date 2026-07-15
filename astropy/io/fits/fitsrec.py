@@ -1122,6 +1122,17 @@ class FITS_rec(np.recarray):
 
                 # ASCII table, convert numbers to strings
                 if isinstance(self._coldefs, _AsciiColDefs):
+                    # DEXP-002 pseudocode:
+                    # REQUIREMENT: DEXP-002
+                    # - INPUT: `dummy` (scaled numeric/string values for this field),
+                    #   `raw_field` (row-oriented character payload slice owned by recarray).
+                    # - ACTION: _scale_back_ascii(indx, dummy, raw_field)
+                    # - STATE TRANSITION: `_scale_back_ascii` must ensure
+                    #   `raw_field` receives the final serialized field bytes.
+                    # - OUTPUT: serialized payload in `raw_field` is the source for
+                    #   both write and checksum paths.
+                    # - FAILURE PATH: if conversion to output strings fails,
+                    #   exception propagates before any file/checksum I/O.
                     self._scale_back_ascii(indx, dummy, raw_field)
                 # binary table string column
                 elif isinstance(raw_field, chararray.chararray):
@@ -1261,6 +1272,17 @@ class FITS_rec(np.recarray):
 
         # Replace exponent separator in floating point numbers
         if 'D' in format:
+            # DEXP-002 logic gate:
+            # IF format.format includes 'D':
+            #   - replaced = output_field.replace('E', 'D')
+            #   - output_field = replaced
+            #   - downstream writer and checksum must continue from `output_field`
+            #     (the post-conversion serialized array), not from any earlier copy.
+            # ELSE:
+            #   - keep output_field unchanged
+            # FAILURE PATH:
+            #   - conversion overflow was already handled before this branch;
+            #   - no-op replacement is acceptable when no exponent bytes exist.
             # DEXP-001 ownership boundary:
             # - Owner: TableData._scale_back_ascii (astropy/io/fits/fitsrec.py)
             # - Boundary: ASCII formatting layer owns output_field payload before
