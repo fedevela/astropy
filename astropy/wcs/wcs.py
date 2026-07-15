@@ -1236,6 +1236,19 @@ reduce these to 2 dimensions using the naxis kwarg.
         # O3 (Obligation 3): do not mutate WCS object state on empty input; all
         #    branches are pure and must leave subsequent non-empty invocations
         #    unaffected.
+        # [GUID: WCSXFORM-003]
+        # Validation-preservation obligations for mixed-empty inputs:
+        # V1: For per-axis path (len(args)==naxis+1), normalize args -> np.asarray and
+        #     int(origin) before shape alignment; any broadcast TypeError/ValueError behavior
+        #     must remain existing.
+        # V2: Broadcast alignment is the gatekeeper for mixed emptiness:
+        #     - all(axis.size == 0) => explicit empty-success branch,
+        #     - partial emptiness or size mismatch => let existing broadcast ValueError
+        #       ("Coordinate arrays are not broadcastable to each other") propagate.
+        # V3: Never branch to the all-empty optimization on partially-empty axes;
+        #     mixed-empty inputs must not produce success even when one axis is zero-length.
+        # V4: Empty behavior is local (return-family shape) and must not alter exception
+        #     type/message semantics expected by legacy malformed-shape callers.
 
         def _return_list_of_arrays(axes, origin):
             try:
@@ -1387,6 +1400,14 @@ reduce these to 2 dimensions using the naxis kwarg.
     def wcs_pix2world(self, *args, **kwargs):
         if self.wcs is None:
             raise ValueError("No basic WCS settings were created.")
+        # [GUID: WCSXFORM-003][Obligation 1]
+        # Branch mapping:
+        # 1) If input is not consistent shape for naxis/axis arrays, preserve current
+        #    exceptions from _array_converter/_denormalize/_wcslib path.
+        # 2) If empty-input fast path is used by _array_converter, return zero-length
+        #    outputs exactly as today.
+        # 3) Never introduce any new success path for mixed-empty/per-axis partial-empty
+        #    inputs.
         # [GUID: WCSXFORM-001]
         # Control-flow obligation:
         #   - Input validation and empty-input branching remain delegated to _array_converter.
@@ -1870,6 +1891,12 @@ reduce these to 2 dimensions using the naxis kwarg.
         if self.wcs is None:
             raise ValueError("No basic WCS settings were created.")
 
+        # [GUID: WCSXFORM-003][Obligation 3]
+        # Alignment requirement logic:
+        # 1) Delegate to _array_converter for argument family normalization.
+        # 2) _array_converter must decide emptiness only when all required axes are empty.
+        # 3) Mixed-empty alignment cases continue through existing exception flow; no
+        #    new all-empty success branch is added.
         # [GUID: WCSXFORM-002][Obligation 2]
         # Control-flow obligation:
         # - Delegate to _array_converter for argument normalization and empty-input
@@ -2215,6 +2242,12 @@ reduce these to 2 dimensions using the naxis kwarg.
     def wcs_world2pix(self, *args, **kwargs):
         if self.wcs is None:
             raise ValueError("No basic WCS settings were created.")
+        # [GUID: WCSXFORM-003][Obligation 2]
+        # Decision points:
+        # 1) Preserve required-axis and origin normalization in _array_converter.
+        # 2) Maintain the existing invalid-shape behavior for mismatched/mixed empties.
+        # 3) Permit empty return only when all supplied required axes are empty and the
+        #    per-axis broadcast branch has no remaining non-empty axis.
         # [GUID: WCSXFORM-002][Obligation 1][Obligation 3]
         # State-transition obligation:
         # 1) Input arrives as either NxN coords or naxis individual arrays.
