@@ -1,4 +1,4 @@
-# ASCII RST header_rows architecture map (ASTRST-001, ASTRST-002, ASTRST-005, ASTRST-006)
+# ASCII RST header_rows architecture map (ASTRST-001, ASTRST-002, ASTRST-003, ASTRST-004, ASTRST-005, ASTRST-006)
 
 ## Scope
 
@@ -6,6 +6,8 @@
 - Deterministic multi-line header rendering for `ascii.rst` when `header_rows` contains ordered tokens.
 - Shared column-width derivation for those header rows and all body rows.
 - Reader/parser path untouched: no changes to parsing logic or read contracts.
+- Default output topology is preserved for `ascii.rst` calls without explicit `header_rows`.
+- `=` border-row continuity and boundary alignment are required when `header_rows` are emitted.
 
 ## Requirement-to-architecture mapping
 
@@ -27,6 +29,35 @@
     - Both rows appear before the table body.
   - Dependency rule: `RST.write` is forbidden to re-interpret header tokens; it only inserts/render-orders
     already-materialized header lines from fixed-width formatter.
+
+- `ASTRST-003` (default topology preservation when `header_rows` is omitted):
+  - Logical pressure: ownership, boundary, regression anchor
+  - Architectural home:
+    - `astropy/io/ascii/fixedwidth.py` class `FixedWidth.__init__`
+    - `astropy/io/ascii/rst.py` class `RST.__init__`
+    - `astropy/io/ascii/rst.py` class `RST.write`
+  - Primary seam:
+    - `RST.__init__(header_rows=None)` forwards formatting intent into `FixedWidth`.
+    - `FixedWidth.__init__` normalizes unset `header_rows` to `["name"]`.
+    - `RST.write` selects default header-block size only through `self.data.header_rows`.
+  - Contract:
+    - no `header_rows` argument keeps the pre-existing single-separator RST output shape.
+    - existing `test_write_normal` remains the default baseline contract.
+  - Integration impact: no reader/parsing seam is introduced.
+
+- `ASTRST-004` (`=` border shape with header rows):
+  - Logical pressure: geometry + alignment + contract seam
+  - Architectural home:
+    - `astropy/io/ascii/fixedwidth.py` class `FixedWidthData.write`
+    - `astropy/io/ascii/rst.py` class `RST.write`
+  - Primary seam:
+    - `FixedWidthData.write` computes one width vector reused by every header/data row.
+    - `RST.write` wraps the emitted lines with the same `=` border row at top/middle/bottom.
+  - Contract:
+    - every header/data line shares the same column boundary positions.
+    - output includes valid simple-table border positions in `=` style.
+    - the same border row can be reused for top/middle/bottom without style change.
+  - Integration impact: no additional style options or read-path dependencies.
 
 - `ASTRST-005` (stable width alignment across header rows and data):
   - Logical pressure: algorithmic state + stability + compatibility
@@ -63,6 +94,9 @@
   - `RST` → `FixedWidth` (formatter constructor forwarding only).
   - `RST.write` → `FixedWidthData.write` output contract (line vector shape and border position semantics).
 - No new dependency from ASCII RST read/parsing path into `header_rows` handling.
+- Additional boundary invariants:
+  - `FixedWidth.__init__` is the sole owner of default `header_rows` semantics.
+  - `RST.write` owns border framing only and cannot change width calculation or column metadata.
 
 ## Integration seam skeletons
 
@@ -82,6 +116,13 @@
   - Contract points:
     - `ASTRST-002`: `test_astrst_002_rst_header_rows_name_unit_ordered_before_data`
     - `ASTRST-005`: `test_astrst_005_rst_multiple_header_rows_share_stable_widths_with_data`
+  - `ASTRST-003`:
+    - Baseline contract and regression anchor:
+      - `test_astrst_003_rst_no_header_rows_defaults_preserve_rst_topology`
+      - `test_write_normal`
+  - `ASTRST-004`:
+    - border geometry and alignment contracts:
+      - `test_astrst_004_rst_header_rows_with_equals_borders_and_column_alignment`
 
 - Regression seam:
   - Baseline tests remain the same pass-to-pass artifacts listed in `ASTRST_VERIFICATION_MAPPING`.
@@ -96,6 +137,7 @@
 
 ## Traceability manifest
 
-- `astropy/io/ascii/tests/test_rst.py` → ASTRST-002, ASTRST-005 (test placeholders and mapping entries)
+- `astropy/io/ascii/tests/test_rst.py` → ASTRST-002, ASTRST-003, ASTRST-004, ASTRST-005 (test placeholders and mapping entries)
 - `astropy/io/ascii/fixedwidth.py` → ASTRST-005 (shared width authority)
-- `astropy/io/ascii/rst.py` → ASTRST-002 / ASTRST-005 (frame boundary and ordered insertion)
+- `astropy/io/ascii/rst.py` → ASTRST-002 / ASTRST-003 / ASTRST-004 (frame boundary and top-line framing)
+- `astropy/io/ascii/rst_architecture.md` → ASTRST-003 / ASTRST-004 (traceable seam and boundary declarations)
