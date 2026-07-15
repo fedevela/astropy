@@ -267,7 +267,13 @@ def test_wcsxform_002_wcs_world2pix_empty_required_axes_return_zero_length_witho
     required axes, the contract must allow zero-length outputs and avoid axis-type
     inconsistency failures.
     """
-    assert True
+    w = wcs.WCS(naxis=2)
+    x, y = w.wcs_world2pix([], [], 1)
+
+    assert x.shape == (0,)
+    assert y.shape == (0,)
+    assert x.size == 0
+    assert y.size == 0
 
 
 def test_wcsxform_002_all_world2pix_empty_3axis_inputs_return_empty_family():
@@ -276,7 +282,15 @@ def test_wcsxform_002_all_world2pix_empty_3axis_inputs_return_empty_family():
     Obligation: For helper-path transforms with three required axes, all three empty
     axis inputs must map to zero-length outputs across every returned axis axis.
     """
-    assert True
+    w = wcs.WCS(naxis=3)
+    a, b, c = w.all_world2pix([], [], [], 1)
+
+    assert len(a) == 0
+    assert len(b) == 0
+    assert len(c) == 0
+    assert a.shape == (0,)
+    assert b.shape == (0,)
+    assert c.shape == (0,)
 
 
 def test_wcsxform_002_wcs_world2pix_empty_then_non_empty_keeps_contract():
@@ -285,7 +299,16 @@ def test_wcsxform_002_wcs_world2pix_empty_then_non_empty_keeps_contract():
     Obligation: The empty-input contract and the standard non-empty behavior remain
     independently valid when called on the same WCS instance in sequence.
     """
-    assert True
+    w = wcs.WCS(naxis=2)
+    x_empty, y_empty = w.wcs_world2pix([], [], 1)
+    assert x_empty.shape == (0,)
+    assert y_empty.shape == (0,)
+
+    x, y = w.wcs_world2pix([1.0, 2.0], [3.0, 4.0], 1)
+    assert x.shape == (2,)
+    assert y.shape == (2,)
+    assert np.isfinite(x).all()
+    assert np.isfinite(y).all()
 
 
 def test_preserve_shape():
