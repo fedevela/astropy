@@ -73,6 +73,20 @@ class RST(FixedWidth):
         )
 
     def write(self, lines):
+        # ASTRST-002 logic:
+        # INPUT: `lines` from FixedWidthData.write, where header rows are already
+        #        formatted in token order and all rows share final column widths.
+        # INVARIANT: border line is expected at index `len(header_rows)` because
+        #            all header rows precede any data lines.
+        # TRANSITION:
+        #   - Wrap output with border lines at both start and end.
+        #   - Do not mutate row ordering or introduce additional width calculations.
+        # SUCCESS CRITERION:
+        #   - name/unit request is ordered, and every header line still aligns with
+        #     its data columns via inherited fixed-width widths.
+        # FAILURE PATH:
+        #   none introduced in this method; out-of-range or malformed line structure is
+        #   delegated to inherited formatter invariants.
         # ASTRST-006 write-path-only contract:
         # INPUT: list `lines` from FixedWidth write formatting.
         # TRANSITION:

@@ -261,6 +261,20 @@ class FixedWidthData(basic.BasicData):
     def write(self, lines):
         default_header_rows = [] if self.header.start_line is None else ["name"]
         header_rows = getattr(self, "header_rows", default_header_rows)
+        # ASTRST-002 / ASTRST-005 logic:
+        # INPUT: ordered `self.cols` plus configured `header_rows` token list.
+        # OUTPUT GOAL:
+        #   - one final width vector reused by every emitted row.
+        #   - one emitted line per token in request order.
+        #   - stable column alignment for all header and data rows.
+        # STATE/DECISION:
+        #   1) Collect data column values.
+        #   2) Collect header token values in request order.
+        #   3) Compute `widths` from both sets (initially from data, then widen for each
+        #      header row cell if needed).
+        #   4) Emit rows in this deterministic sequence:
+        #      headers -> divider(if configured) -> data.
+        # ERROR PATH: no new explicit raises; existing splitter/metadata behavior remains.
         # First part is getting the widths of each column.
         # List (rows) of list (column values) for data lines
         vals_list = []
