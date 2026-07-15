@@ -530,30 +530,20 @@ class NDArithmeticMixin:
             If neither had a mask ``None`` is returned. Otherwise
             ``handle_mask`` must create (and copy) the returned mask.
         """
-        # MASKHANDLE-001 / MASKHANDLE-002 control-flow contract:
-        # 1) mixed-mask identity path:
-        #    - exactly one of self.mask, operand.mask is set -> return deepcopy(other).
-        #    - treat None as no-mask identity.
-        # 2) both-masked path:
-        #    - both masks present -> kwargs["mask"] = handle_mask(self.mask, operand.mask, **kwds)
-        #    - operand can be None only for collapse operations.
-        # 3) no-mask path:
-        #    - neither mask present or handle_mask is None -> None.
-        # Failure guard:
-        #    - never invoke handle_mask with either mask argument equal to None.
-        # If only one mask is present we need not bother about any type checks
-        if (
-            self.mask is None and operand is not None and operand.mask is None
-        ) or handle_mask is None:
+        if handle_mask is None:
             return None
-        elif self.mask is None and operand is not None:
-            # Make a copy so there is no reference in the result.
-            return deepcopy(operand.mask)
-        elif operand is None:
+
+        if operand is None:
             return deepcopy(self.mask)
-        else:
-            # Now lets calculate the resulting mask (operation enforces copy)
-            return handle_mask(self.mask, operand.mask, **kwds)
+
+        if self.mask is None and operand.mask is None:
+            return None
+        elif self.mask is None:
+            return deepcopy(operand.mask)
+        elif operand.mask is None:
+            return deepcopy(self.mask)
+
+        return handle_mask(self.mask, operand.mask, **kwds)
 
     def _arithmetic_wcs(self, operation, operand, compare_wcs, **kwds):
         """

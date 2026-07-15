@@ -1246,28 +1246,56 @@ MASKHANDLE_TRACEABILITY_MAP = {
 }
 
 
-def test_MASKHANDLE_001_preserve_non_none_mask_for_mixed_mask_handle_mask_bitwise_or():
-    # Placeholder contract traceability artifact for MASKHANDLE-001.
-    # Invariant:
-    # - one masked NDDataRef operand and one unmasked NDDataRef operand.
-    # - either operand order.
-    # - handle_mask=np.bitwise_or.
-    # - result.mask should equal the present mask and operation must not fail.
-    assert True
+@pytest.mark.parametrize("op_name", ["add", "subtract", "multiply", "divide"])
+@pytest.mark.parametrize("masked_first", [True, False])
+def test_MASKHANDLE_001_preserve_non_none_mask_for_mixed_mask_handle_mask_bitwise_or(
+    op_name, masked_first
+):
+    data = [1, 2, 3]
+    mask = np.array([True, False, True])
+    nd_masked = NDDataArithmetic(data, mask=mask)
+    nd_unmasked = NDDataArithmetic(data)
+
+    method = nd_masked if masked_first else nd_unmasked
+    other = nd_unmasked if masked_first else nd_masked
+    method = getattr(method, op_name)
+    result = method(other, handle_mask=np.bitwise_or)
+
+    assert_array_equal(result.mask, mask)
 
 
 def test_MASKHANDLE_002_no_none_operand_to_bitwise_or_with_scalar_or_nddataref():
-    # Placeholder contract traceability artifact for MASKHANDLE-002.
-    # - mixed-mask branch must use None as identity without calling bitwise_or(None, ...).
-    # - covers scalar/NDDataRef mixed-mask combinations.
-    assert True
+    data = [1, 2, 3]
+    mask = np.array([True, False, True])
+    masked = np.array([False, True, False])
+    nd_masked = NDDataArithmetic(data, mask=mask)
+    nd_unmasked = NDDataArithmetic(data)
+    nd_masked_alt = NDDataArithmetic(data, mask=masked)
+
+    called = {"count": 0}
+
+    def _safe_bitwise_or(first_mask, second_mask, **kwargs):
+        called["count"] += 1
+        assert first_mask is not None
+        assert second_mask is not None
+        return np.bitwise_or(first_mask, second_mask, **kwargs)
+
+    result_nd = nd_masked.add(nd_unmasked, handle_mask=_safe_bitwise_or)
+    assert_array_equal(result_nd.mask, mask)
+
+    result_scalar = nd_masked.add(2, handle_mask=_safe_bitwise_or)
+    assert_array_equal(result_scalar.mask, mask)
+
+    _ = nd_masked_alt.add(nd_masked, handle_mask=_safe_bitwise_or)
+    assert_array_equal(_.mask, np.bitwise_or(mask, masked))
+    assert called["count"] == 1
 
 
 def test_MASKHANDLE_001_002_scalar_operand_uses_existing_mask_with_bitwise_or():
-    # Placeholder contract traceability artifact for MASKHANDLE-001 and MASKHANDLE-002.
-    # - numeric scalar treated as no-mask contributor.
-    # - masked NDDataRef + scalar with handle_mask=np.bitwise_or must keep masked operand mask.
-    assert True
+    nd_masked = NDDataArithmetic([1, 2, 3], mask=np.array([True, False, True]))
+
+    result = nd_masked.add(2, handle_mask=np.bitwise_or)
+    assert_array_equal(result.mask, nd_masked.mask)
 
 
 @pytest.mark.parametrize("meth", ["add", "subtract", "divide", "multiply"])
