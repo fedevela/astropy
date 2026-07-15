@@ -1242,7 +1242,7 @@ reduce these to 2 dimensions using the naxis kwarg.
                     "When providing two arguments, the array must be "
                     "of shape (N, {0})".format(self.naxis))
 
-            if xy.shape[0] == 0:
+            if xy.size == 0:
                 return np.empty((0, self.naxis))
 
             if ra_dec_order and sky == 'input':

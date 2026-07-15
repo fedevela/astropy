@@ -1,0 +1,904 @@
+2026-07-15 05:43:51,040 - INFO - Creating container for astropy__astropy-7746...
+2026-07-15 05:43:51,962 - INFO - Container for astropy__astropy-7746 created: 6794e57228a18b0c8f90d0eb11c1447d572fc618a3141cd5fd83980be9a9b51f
+2026-07-15 05:43:52,080 - INFO - Container for astropy__astropy-7746 started: 6794e57228a18b0c8f90d0eb11c1447d572fc618a3141cd5fd83980be9a9b51f
+2026-07-15 05:43:52,080 - INFO - Intermediate patch for astropy__astropy-7746 written to logs/run_evaluation/atlas-final-issue-36-attempt-1/atlas-agentic-platform/astropy__astropy-7746/patch.diff, now applying to container...
+2026-07-15 05:43:52,180 - INFO - >>>>> Applied Patch:
+/tmp/patch.diff:606: trailing whitespace.
+ 
+/tmp/patch.diff:607: trailing whitespace.
+ 
+/tmp/patch.diff:1087: trailing whitespace.
+ 
+/tmp/patch.diff:1164: trailing whitespace.
+ 
+/tmp/patch.diff:1172: trailing whitespace.
+ 
+Checking patch .atlas/swebench/issue-36/attempt-0/.swebench_predictions/astropy__astropy-7746.jsonl...
+Checking patch .atlas/swebench/issue-36/attempt-0/atlas-agentic-platform.atlas-final-issue-36-attempt-0.json...
+Checking patch .atlas/swebench/issue-36/attempt-0/logs/run_evaluation/atlas-final-issue-36-attempt-0/atlas-agentic-platform/astropy__astropy-7746/eval.sh...
+Checking patch .atlas/swebench/issue-36/attempt-0/logs/run_evaluation/atlas-final-issue-36-attempt-0/atlas-agentic-platform/astropy__astropy-7746/patch.diff...
+Checking patch .atlas/swebench/issue-36/attempt-0/logs/run_evaluation/atlas-final-issue-36-attempt-0/atlas-agentic-platform/astropy__astropy-7746/report.json...
+Checking patch .atlas/swebench/issue-36/attempt-0/logs/run_evaluation/atlas-final-issue-36-attempt-0/atlas-agentic-platform/astropy__astropy-7746/run_instance.log...
+Checking patch .atlas/swebench/issue-36/attempt-0/logs/run_evaluation/atlas-final-issue-36-attempt-0/atlas-agentic-platform/astropy__astropy-7746/test_output.txt...
+Checking patch .atlas/swebench/issue-36/attempt-0/logs/run_evaluation/atlas-final-issue-36-attempt-0/atlas-agentic-platform/astropy__astropy-7746/test_result.txt...
+Checking patch astropy/wcs/WCSXFORM-001-architecture.md...
+Checking patch astropy/wcs/WCSXFORM-002-architecture.md...
+Checking patch astropy/wcs/WCSXFORM-003-architecture.md...
+Checking patch astropy/wcs/WCSXFORM-004-architecture.md...
+Checking patch astropy/wcs/WCSXFORM-005-architecture.md...
+Checking patch astropy/wcs/WCSXFORM-006-architecture.md...
+Checking patch astropy/wcs/tests/test_wcs.py...
+Checking patch astropy/wcs/wcs.py...
+Applied patch .atlas/swebench/issue-36/attempt-0/.swebench_predictions/astropy__astropy-7746.jsonl cleanly.
+Applied patch .atlas/swebench/issue-36/attempt-0/atlas-agentic-platform.atlas-final-issue-36-attempt-0.json cleanly.
+Applied patch .atlas/swebench/issue-36/attempt-0/logs/run_evaluation/atlas-final-issue-36-attempt-0/atlas-agentic-platform/astropy__astropy-7746/eval.sh cleanly.
+Applied patch .atlas/swebench/issue-36/attempt-0/logs/run_evaluation/atlas-final-issue-36-attempt-0/atlas-agentic-platform/astropy__astropy-7746/patch.diff cleanly.
+Applied patch .atlas/swebench/issue-36/attempt-0/logs/run_evaluation/atlas-final-issue-36-attempt-0/atlas-agentic-platform/astropy__astropy-7746/report.json cleanly.
+Applied patch .atlas/swebench/issue-36/attempt-0/logs/run_evaluation/atlas-final-issue-36-attempt-0/atlas-agentic-platform/astropy__astropy-7746/run_instance.log cleanly.
+Applied patch .atlas/swebench/issue-36/attempt-0/logs/run_evaluation/atlas-final-issue-36-attempt-0/atlas-agentic-platform/astropy__astropy-7746/test_output.txt cleanly.
+Applied patch .atlas/swebench/issue-36/attempt-0/logs/run_evaluation/atlas-final-issue-36-attempt-0/atlas-agentic-platform/astropy__astropy-7746/test_result.txt cleanly.
+Applied patch astropy/wcs/WCSXFORM-001-architecture.md cleanly.
+Applied patch astropy/wcs/WCSXFORM-002-architecture.md cleanly.
+Applied patch astropy/wcs/WCSXFORM-003-architecture.md cleanly.
+Applied patch astropy/wcs/WCSXFORM-004-architecture.md cleanly.
+Applied patch astropy/wcs/WCSXFORM-005-architecture.md cleanly.
+Applied patch astropy/wcs/WCSXFORM-006-architecture.md cleanly.
+Applied patch astropy/wcs/tests/test_wcs.py cleanly.
+Applied patch astropy/wcs/wcs.py cleanly.
+warning: squelched 29 whitespace errors
+warning: 34 lines add whitespace errors.
+
+2026-07-15 05:43:52,506 - INFO - Git diff before:
+diff --git a/astropy/wcs/tests/test_wcs.py b/astropy/wcs/tests/test_wcs.py
+index 85853e10e5..13bcdc2fbc 100644
+--- a/astropy/wcs/tests/test_wcs.py
++++ b/astropy/wcs/tests/test_wcs.py
+@@ -219,6 +219,483 @@ def test_3d_shapes():
+         assert len(result) == 3
+ 
+ 
++def test_wcsxform_001_returns_empty_family_for_list_inputs_origin_0():
++    """
++    WCSXFORM-001
++    Verify empty per-axis return family when all required axes are empty.
++    """
++    w = wcs.WCS(naxis=2)
++    x, y = w.wcs_pix2world([], [], 0)
++    assert len(x) == 0
++    assert len(y) == 0
++    assert x.shape == (0,)
++    assert y.shape == (0,)
++
++
++def test_wcsxform_001_returns_empty_family_for_list_inputs_origin_1():
++    """
++    WCSXFORM-001
++    Verify empty per-axis return family when all required axes are empty.
++    """
++    w = wcs.WCS(naxis=2)
++    x, y = w.wcs_pix2world([], [], 1)
++    assert len(x) == 0
++    assert len(y) == 0
++    assert x.shape == (0,)
++    assert y.shape == (0,)
++
++
++def test_wcsxform_001_returns_empty_family_for_numpy_empty_axes_origin_0():
++    """
++    WCSXFORM-001
++    Verify empty per-axis return family when all required axes are zero-length.
++    """
++    w = wcs.WCS(naxis=2)
++    x = np.array([])
++    y = np.array([])
++    xw, yw = w.wcs_pix2world(x, y, 0)
++    assert len(xw) == 0
++    assert len(yw) == 0
++    assert xw.shape == x.shape
++    assert yw.shape == y.shape
++
++
++def test_wcsxform_002_wcs_world2pix_empty_required_axes_return_zero_length_without_axis_errors():
++    """
++    WCSXFORM-002
++    Obligation: When helper-path helper `wcs_world2pix` receives empty inputs for all
++    required axes, the contract must allow zero-length outputs and avoid axis-type
++    inconsistency failures.
++    """
++    w = wcs.WCS(naxis=2)
++    x, y = w.wcs_world2pix([], [], 1)
++
++    assert x.shape == (0,)
++    assert y.shape == (0,)
++    assert x.size == 0
++    assert y.size == 0
++
++
++def test_wcsxform_002_all_world2pix_empty_3axis_inputs_return_empty_family():
++    """
++    WCSXFORM-002
++    Obligation: For helper-path transforms with three required axes, all three empty
++    axis inputs must map to zero-length outputs across every returned axis axis.
++    """
++    w = wcs.WCS(naxis=3)
++    a, b, c = w.all_world2pix([], [], [], 1)
++
++    assert len(a) == 0
++    assert len(b) == 0
++    assert len(c) == 0
++    assert a.shape == (0,)
++    assert b.shape == (0,)
++    assert c.shape == (0,)
++
++
++def test_wcsxform_002_wcs_world2pix_empty_then_non_empty_keeps_contract():
++    """
++    WCSXFORM-002
++    Obligation: The empty-input contract and the standard non-empty behavior remain
++    independently valid when called on the same WCS instance in sequence.
++    """
++    w = wcs.WCS(naxis=2)
++    x_empty, y_empty = w.wcs_world2pix([], [], 1)
++    assert x_empty.shape == (0,)
++    assert y_empty.shape == (0,)
++
++    x, y = w.wcs_world2pix([1.0, 2.0], [3.0, 4.0], 1)
++    assert x.shape == (2,)
++    assert y.shape == (2,)
++    assert np.isfinite(x).all()
++    assert np.isfinite(y).all()
++
++
++WCSXFORM_003_VERIFICATION_MAP = [
++    {
++        "requirement_id": "WCSXFORM-003",
++        "obligation": (
++            "existing validation must be preserved for axis-count/shape inconsistencies "
++            "when empty inputs are mixed with non-empty inputs in array-based transform paths"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_003_wcs_pix2world_axis_count_mismatch_with_empty_axis_raises_shape_validation",
++            "test_wcsxform_003_wcs_world2pix_one_axis_empty_one_non_empty_preserves_malformed_shape_behavior",
++            "test_wcsxform_003_all_world2pix_mixed_empty_non_empty_alignment_path_rejects_empty_success_branch",
++        ],
++    },
++]
++
++
++WCSXFORM_004_VERIFICATION_MAP = [
++    {
++        "requirement_id": "WCSXFORM-004",
++        "obligation": (
++            "for valid non-empty inputs, `wcs_pix2world` must preserve output values, axis "
++            "ordering, return container type, and shape exactly as before an empty-input change"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_004_wcs_pix2world_non_empty_inputs_preserve_axes_order_shape_and_container_type",
++        ],
++    },
++    {
++        "requirement_id": "WCSXFORM-004",
++        "obligation": (
++            "for valid mixed scalar/list/array inputs, `wcs_pix2world` must remain "
++            "functionally indistinguishable in output content and structure across contract shifts"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_004_wcs_pix2world_mixed_scalar_list_array_outputs_remain_structurally_equivalent",
++        ],
++    },
++]
++
++
++WCSXFORM_005_VERIFICATION_MAP = [
++    {
++        "requirement_id": "WCSXFORM-005",
++        "obligation": (
++            "preserve historical malformed-input exception class and message for "
++            "`wcs_pix2world` when malformed payloads are non-empty"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_005_wcs_pix2world_malformed_non_empty_payload_preserves_legacy_error",
++        ],
++    },
++    {
++        "requirement_id": "WCSXFORM-005",
++        "obligation": (
++            "preserve malformed non-empty validation errors for same-path peer transforms "
++            "instead of remapping through empty-input branches"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_005_same_path_peer_world2pix_malformed_non_empty_payload_preserves_legacy_error",
++        ],
++    },
++    {
++        "requirement_id": "WCSXFORM-005",
++        "obligation": (
++            "ensure malformed non-empty error branches remain independent from empty-input "
++            "success branches in the same test locus"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_005_empty_and_malformed_non_empty_branches_are_disjoint",
++        ],
++    },
++]
++
++
++WCSXFORM_006_VERIFICATION_MAP = [
++    {
++        "requirement_id": "WCSXFORM-006",
++        "obligation": (
++            "repeated empty-input `wcs_pix2world` invocations must each return empty per-axis "
++            "outputs and must not introduce instance-level state drift across invocations"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_006_wcs_pix2world_repeated_empty_inputs_remain_empty_and_state_free",
++        ],
++    },
++    {
++        "requirement_id": "WCSXFORM-006",
++        "obligation": (
++            "the sequence empty->non-empty->empty must preserve expected non-empty behavior and "
++            "empty-output semantics on the same instance"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_006_empty_nonempty_empty_sequence_keeps_contract_on_one_instance",
++        ],
++    },
++    {
++        "requirement_id": "WCSXFORM-006",
++        "obligation": (
++            "fresh equivalent `WCS` instances should produce equivalent empty/non-empty/empty sequences "
++            "without divergence in outputs or error behavior"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_006_equivalent_fresh_wcs_instances_preserve_empty_nonempty_empty_contract",
++        ],
++    },
++]
++
++
++def test_wcsxform_006_wcs_pix2world_repeated_empty_inputs_remain_empty_and_state_free():
++    """
++    WCSXFORM-006
++    Obligation: repeated empty-input invocations on the same `WCS` instance must remain
++    empty-output contracts with no mutation-based drift.
++    """
++    w = wcs.WCS(naxis=2)
++
++    result_1 = w.wcs_pix2world([], [], 0)
++    result_2 = w.wcs_pix2world([], [], 0)
++
++    assert isinstance(result_1, list)
++    assert isinstance(result_2, list)
++    assert len(result_1) == 2
++    assert len(result_2) == 2
++    assert result_1[0].shape == (0,)
++    assert result_1[1].shape == (0,)
++    assert result_2[0].shape == (0,)
++    assert result_2[1].shape == (0,)
++    assert_allclose(result_1[0], np.array([]))
++    assert_allclose(result_1[1], np.array([]))
++    assert_allclose(result_2[0], np.array([]))
++    assert_allclose(result_2[1], np.array([]))
++
++
++def test_wcsxform_006_empty_nonempty_empty_sequence_keeps_contract_on_one_instance():
++    """
++    WCSXFORM-006
++    Obligation: in an empty -> non-empty -> empty call sequence on the same `WCS` instance,
++    the non-empty transform remains valid and both empties remain empty-output.
++    """
++    w = wcs.WCS(naxis=2)
++
++    before_empty = w.wcs_pix2world([], [], 0)
++    assert isinstance(before_empty, list)
++    assert before_empty[0].shape == (0,)
++    assert before_empty[1].shape == (0,)
++
++    nonempty = w.wcs_pix2world([1.0, 2.0, 3.0], [4.0, 5.0, 6.0], 0)
++    assert isinstance(nonempty, list)
++    assert len(nonempty) == 2
++    assert nonempty[0].shape == (3,)
++    assert nonempty[1].shape == (3,)
++    assert np.isfinite(nonempty[0]).all()
++    assert np.isfinite(nonempty[1]).all()
++
++    after_empty = w.wcs_pix2world([], [], 0)
++    assert isinstance(after_empty, list)
++    assert after_empty[0].shape == (0,)
++    assert after_empty[1].shape == (0,)
++
++    expected = wcs.WCS(naxis=2)
++    expected_nonempty = expected.wcs_pix2world([1.0, 2.0, 3.0], [4.0, 5.0, 6.0], 0)
++    assert_allclose(nonempty[0], expected_nonempty[0])
++    assert_allclose(nonempty[1], expected_nonempty[1])
++
++
++def test_wcsxform_006_equivalent_fresh_wcs_instances_preserve_empty_nonempty_empty_contract():
++    """
++    WCSXFORM-006
++    Obligation: equivalent fresh instances must preserve outputs and error behavior across repeated
++    empty/non-empty/empty execution sequences.
++    """
++    w_ref = wcs.WCS(naxis=2)
++    w_fresh = wcs.WCS(naxis=2)
++
++    ref_empty_1 = w_ref.wcs_pix2world([], [], 1)
++    ref_nonempty = w_ref.wcs_pix2world([7.0, 8.0, 9.0], [10.0, 11.0, 12.0], 1)
++    ref_empty_2 = w_ref.wcs_pix2world([], [], 1)
++
++    fresh_empty_1 = w_fresh.wcs_pix2world([], [], 1)
++    fresh_nonempty = w_fresh.wcs_pix2world([7.0, 8.0, 9.0], [10.0, 11.0, 12.0], 1)
++    fresh_empty_2 = w_fresh.wcs_pix2world([], [], 1)
++
++    assert isinstance(ref_empty_1, list)
++    assert isinstance(ref_empty_2, list)
++    assert ref_empty_1[0].shape == (0,)
++    assert ref_empty_1[1].shape == (0,)
++    assert ref_empty_2[0].shape == (0,)
++    assert ref_empty_2[1].shape == (0,)
++    assert isinstance(fresh_empty_1, list)
++    assert isinstance(fresh_empty_2, list)
++    assert fresh_empty_1[0].shape == (0,)
++    assert fresh_empty_1[1].shape == (0,)
++    assert fresh_empty_2[0].shape == (0,)
++    assert fresh_empty_2[1].shape == (0,)
++
++    assert_allclose(ref_nonempty[0], fresh_nonempty[0])
++    assert_allclose(ref_nonempty[1], fresh_nonempty[1])
++    assert ref_empty_1[0].shape == fresh_empty_1[0].shape
++    assert ref_empty_1[1].shape == fresh_empty_1[1].shape
++    assert ref_empty_2[0].shape == fresh_empty_2[0].shape
++    assert ref_empty_2[1].shape == fresh_empty_2[1].shape
++
++    with pytest.raises(ValueError) as exc_ref:
++        w_ref.wcs_pix2world([10.0, 11.0, 12.0], [1.0, 2.0], 1)
++    with pytest.raises(ValueError) as exc_fresh:
++        w_fresh.wcs_pix2world([10.0, 11.0, 12.0], [1.0, 2.0], 1)
++
++    assert exc_ref.value.args[0] == exc_fresh.value.args[0]
++
++
++def test_wcsxform_004_wcs_pix2world_non_empty_inputs_preserve_axes_order_shape_and_container_type():
++    """
++    WCSXFORM-004
++    Obligation: enforce traceability for non-empty `wcs_pix2world` calls (scalar/list/array)
++    that must retain axis order, return type, and shape after empty-input handling changes.
++    """
++    w = wcs.WCS(naxis=2)
++    origin = 1
++
++    x_scalar = 11.0
++    y_scalar = 12.0
++    scalar_world = w.wcs_pix2world(x_scalar, y_scalar, origin)
++    assert isinstance(scalar_world, list)
++    assert len(scalar_world) == 2
++
++    x = np.array([[1.0, 2.0], [3.0, 4.0]])
++    y = np.array([[5.0, 6.0], [7.0, 8.0]])
++    list_world = w.wcs_pix2world(x, y, origin)
++    assert isinstance(list_world, list)
++    assert len(list_world) == 2
++    assert list_world[0].shape == x.shape
++    assert list_world[1].shape == y.shape
++
++    scalar_reference = w.wcs_pix2world(np.array([[x_scalar, y_scalar]]), origin)
++    packed_input = np.column_stack([x.ravel(), y.ravel()])
++    packed_world = w.wcs_pix2world(packed_input, origin)
++
++    assert_allclose(scalar_world[0], scalar_reference[:, 0])
++    assert_allclose(scalar_world[1], scalar_reference[:, 1])
++    assert_allclose(list_world[0], packed_world[:, 0].reshape(x.shape))
++    assert_allclose(list_world[1], packed_world[:, 1].reshape(y.shape))
++
++    assert scalar_world[0].shape == (1,)
++    assert scalar_world[1].shape == (1,)
++
++
++def test_wcsxform_004_wcs_pix2world_mixed_scalar_list_array_outputs_remain_structurally_equivalent():
++    """
++    WCSXFORM-004
++    Obligation: trace the mixed-container non-empty behavior contract (`scalar`, `list`,
++    and `array` variants) as a non-regressing baseline across the change.
++    """
++    w = wcs.WCS(naxis=2)
++    origin = 0
++
++    scalar = 2.0
++    list_coords = [10.0, 11.0, 12.0]
++    array_coords = np.array(list_coords, dtype=float)
++    scalar_list = w.wcs_pix2world(scalar, list_coords, origin)
++    list_array = w.wcs_pix2world([scalar] * len(list_coords), array_coords, origin)
++    array_scalar = w.wcs_pix2world(np.array([scalar] * len(list_coords)), scalar, origin)
++    reference = w.wcs_pix2world(np.array([scalar] * len(list_coords)), array_coords, origin)
++
++    for outputs in (scalar_list, list_array, array_scalar, reference):
++        assert isinstance(outputs, list)
++        assert len(outputs) == 2
++        assert outputs[0].shape == (len(list_coords),)
++        assert outputs[1].shape == (len(list_coords),)
++
++    assert_allclose(scalar_list[0], list_array[0])
++    assert_allclose(scalar_list[1], list_array[1])
++    assert_allclose(scalar_list[0], array_scalar[0])
++    assert_allclose(scalar_list[1], array_scalar[1])
++    assert_allclose(scalar_list[0], reference[0])
++    assert_allclose(scalar_list[1], reference[1])
++
++
++def test_wcsxform_005_wcs_pix2world_malformed_non_empty_payload_preserves_legacy_error():
++    """
++    WCSXFORM-005
++    Obligation: malformed non-empty `wcs_pix2world` inputs must keep legacy exception
++    class/message behavior and must not be treated as empty-input success paths.
++    """
++    w = wcs.WCS(naxis=2)
++
++    with pytest.raises(ValueError) as exc:
++        w.wcs_pix2world([10.0, 11.0, 12.0], [1.0, 2.0], 0)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++
++def test_wcsxform_005_same_path_peer_world2pix_malformed_non_empty_payload_preserves_legacy_error():
++    """
++    WCSXFORM-005
++    Obligation: malformed non-empty payloads to same-path peers must preserve existing
++    validation behavior instead of being masked by empty-input handling.
++    """
++    w = wcs.WCS(naxis=2)
++
++    with pytest.raises(ValueError) as exc:
++        w.wcs_world2pix([10.0, 11.0, 12.0], [1.0, 2.0], 1)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++    with pytest.raises(ValueError) as exc:
++        w.all_world2pix([10.0, 11.0, 12.0], [1.0, 2.0], 1)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++
++def test_wcsxform_005_empty_and_malformed_non_empty_branches_are_disjoint():
++    """
++    WCSXFORM-005
++    Obligation: when both branches are exercised separately, only empty-input malformed
++    should succeed with zero-length output; malformed non-empty inputs should fail.
++    """
++    w = wcs.WCS(naxis=2)
++
++    empty_pix2world = w.wcs_pix2world([], [], 0)
++    assert isinstance(empty_pix2world, list)
++    assert len(empty_pix2world) == 2
++    assert empty_pix2world[0].shape == (0,)
++    assert empty_pix2world[1].shape == (0,)
++
++    with pytest.raises(ValueError) as exc:
++        w.wcs_pix2world([10.0, 11.0, 12.0], [1.0, 2.0], 0)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++    empty_world2pix = w.wcs_world2pix([], [], 1)
++    assert isinstance(empty_world2pix, list)
++    assert len(empty_world2pix) == 2
++    assert empty_world2pix[0].shape == (0,)
++    assert empty_world2pix[1].shape == (0,)
++
++    with pytest.raises(ValueError) as exc:
++        w.wcs_world2pix([10.0, 11.0], [1.0, 2.0, 3.0], 1)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++    empty_all_world2pix = w.all_world2pix([], [], 1)
++    assert isinstance(empty_all_world2pix, list)
++    assert len(empty_all_world2pix) == 2
++    assert empty_all_world2pix[0].shape == (0,)
++    assert empty_all_world2pix[1].shape == (0,)
++
++    with pytest.raises(ValueError) as exc:
++        w.all_world2pix([10.0, 11.0], [1.0, 2.0, 3.0], 1)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++
++def test_wcsxform_003_wcs_pix2world_axis_count_mismatch_with_empty_axis_raises_shape_validation():
++    """
++    WCSXFORM-003
++    obligation: preserve existing validation for mixed empty/non-empty axis inputs in
++    `wcs_pix2world`, including the `wcs_pix2world([], [1.0], 0)` shape-mismatch class.
++    """
++    w = wcs.WCS(naxis=2)
++
++    with pytest.raises(ValueError) as exc:
++        w.wcs_pix2world([], [1.0], 0)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++
++def test_wcsxform_003_wcs_world2pix_one_axis_empty_one_non_empty_preserves_malformed_shape_behavior():
++    """
++    WCSXFORM-003
++    obligation: preserve existing validation behavior for helper-path transforms requiring
++    2 axes when one axis is empty and the other is non-empty.
++    """
++    w = wcs.WCS(naxis=2)
++
++    with pytest.raises(ValueError) as exc:
++        w.wcs_world2pix([], [1.0], 1)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++
++def test_wcsxform_003_all_world2pix_mixed_empty_non_empty_alignment_path_rejects_empty_success_branch():
++    """
++    WCSXFORM-003
++    obligation: preserve alignment-required failure mode for mixed empty/non-empty inputs and
++    avoid introducing empty-input success semantics.
++    """
++    w = wcs.WCS(naxis=3)
++
++    with pytest.raises(ValueError) as exc:
++        w.all_world2pix([], [], [1.0], 1)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++
+ def test_preserve_shape():
+     w = wcs.WCS(naxis=2)
+ 
+diff --git a/astropy/wcs/wcs.py b/astropy/wcs/wcs.py
+index d3a06f2b31..44c81f2d83 100644
+--- a/astropy/wcs/wcs.py
++++ b/astropy/wcs/wcs.py
+@@ -66,10 +66,8 @@ __all__ = ['FITSFixedWarning', 'WCS', 'find_all_wcs',
+            'NonseparableSubimageCoordinateSystemError',
+            'NoWcsKeywordsFoundError', 'InvalidTabularParametersError']
+ 
+-
+ __doctest_skip__ = ['WCS.all_world2pix']
+ 
+-
+ if _wcs is not None:
+     _parsed_version = _wcs.__version__.split('.')
+     if int(_parsed_version[0]) == 5 and int(_parsed_version[1]) < 8:
+@@ -121,7 +119,6 @@ else:
+     NoWcsKeywordsFoundError = None
+     InvalidTabularParametersError = None
+ 
+-
+ # Additional relax bit flags
+ WCSHDO_SIP = 0x80000
+ 
+@@ -131,7 +128,6 @@ WCSHDO_SIP = 0x80000
+ # Keyword optionally ends with a capital letter.
+ SIP_KW = re.compile('''^[AB]P?_1?[0-9]_1?[0-9][A-Z]?$''')
+ 
+-
+ def _parse_keysel(keysel):
+     keysel_flags = 0
+     if keysel is not None:
+@@ -151,7 +147,6 @@ def _parse_keysel(keysel):
+ 
+     return keysel_flags
+ 
+-
+ class NoConvergence(Exception):
+     """
+     An error class used to report non-convergence and/or divergence
+@@ -203,7 +198,6 @@ class NoConvergence(Exception):
+                           "future.".format(list(kwargs)),
+                           AstropyDeprecationWarning)
+ 
+-
+ class FITSFixedWarning(AstropyWarning):
+     """
+     The warning raised when the contents of the FITS header have been
+@@ -211,7 +205,6 @@ class FITSFixedWarning(AstropyWarning):
+     """
+     pass
+ 
+-
+ class WCS(WCSBase):
+     """WCS objects perform standard WCS transformations, and correct for
+     `SIP`_ and `distortion paper`_ table-lookup transformations, based
+@@ -1212,12 +1205,25 @@ reduce these to 2 dimensions using the naxis kwarg.
+         """
+ 
+         def _return_list_of_arrays(axes, origin):
++            if all(axis.size == 0 for axis in axes):
++                try:
++                    axes = np.broadcast_arrays(*axes)
++                except ValueError:
++                    raise ValueError(
++                        "Coordinate arrays are not broadcastable to each other")
++                return [np.empty(axis.shape, dtype=float) for axis in axes]
+             try:
++                original_sizes = [axis.size for axis in axes]
+                 axes = np.broadcast_arrays(*axes)
+             except ValueError:
+                 raise ValueError(
+                     "Coordinate arrays are not broadcastable to each other")
+ 
++            if any(size == 0 for size in original_sizes) and \
++               any(size > 0 for size in original_sizes):
++                raise ValueError(
++                    "Coordinate arrays are not broadcastable to each other")
++
+             xy = np.hstack([x.reshape((x.size, 1)) for x in axes])
+ 
+             if ra_dec_order and sky == 'input':
+@@ -1235,6 +1241,10 @@ reduce these to 2 dimensions using the naxis kwarg.
+                 raise ValueError(
+                     "When providing two arguments, the array must be "
+                     "of shape (N, {0})".format(self.naxis))
++
++            if xy.shape[0] == 0:
++                return np.empty((0, self.naxis))
++
+             if ra_dec_order and sky == 'input':
+                 xy = self._denormalize_sky(xy)
+             result = func(xy, origin)
+@@ -1430,10 +1440,8 @@ reduce these to 2 dimensions using the naxis kwarg.
+         # A more detailed discussion can be found here:
+         # https://github.com/astropy/astropy/pull/2373
+         #
+-        #
+         #                  ### Background ###
+         #
+-        #
+         # I will refer here to the [SIP Paper]
+         # (http://fits.gsfc.nasa.gov/registry/sip/SIP_distortion_v1_0.pdf).
+         # According to this paper, the effect of distortions as
+@@ -1470,10 +1478,8 @@ reduce these to 2 dimensions using the naxis kwarg.
+         # | `T`           | `all_pix2world()`            |
+         # | `x+f(x)`      | `pix2foc()`                  |
+         #
+-        #
+         #      ### Direct Solving of Equation (2)  ###
+         #
+-        #
+         # In order to find the pixel coordinates that correspond to
+         # given world coordinates `w`, it is necessary to invert
+         # equation (2): `x=T^{-1}(w)`, or solve equation `w==T(x)`
+@@ -1486,10 +1492,8 @@ reduce these to 2 dimensions using the naxis kwarg.
+         # (essentially because `all_pix2world` may return points with
+         # a different phase than user's input `w`).
+         #
+-        #
+         #      ### Description of the Method Used here ###
+         #
+-        #
+         # By applying inverse linear WCS transformation (`W^{-1}`)
+         # to both sides of equation (2) and introducing notation `x'`
+         # (prime) for the pixels coordinates obtained from the world
+@@ -1567,10 +1571,8 @@ reduce these to 2 dimensions using the naxis kwarg.
+         # `sip`, `cpdis1`, `cpdis2`, `det2im1`, and `det2im2` are
+         # *all* `None`.
+         #
+-        #
+         #         ### Outline of the Algorithm ###
+         #
+-        #
+         # While the proposed code is relatively long (considering
+         # the simplicity of the algorithm), this is due to: 1)
+         # checking if iterative solution is necessary at all; 2)
+@@ -1609,7 +1611,6 @@ reduce these to 2 dimensions using the naxis kwarg.
+         # is the number of points to be converted simultaneously to
+         # image coordinates.
+         #
+-        #
+         #                ###  IMPORTANT NOTE:  ###
+         #
+         # If, in the future releases of the `~astropy.wcs`,
+@@ -1836,7 +1837,6 @@ reduce these to 2 dimensions using the naxis kwarg.
+         `~astropy.wcs.WCS.all_pix2world` with complete
+         distortion model.
+ 
+-
+         Parameters
+         ----------
+         {0}
+@@ -3079,7 +3079,6 @@ reduce these to 2 dimensions using the naxis kwarg.
+         from ..visualization.wcsaxes import WCSAxes
+         return WCSAxes, {'wcs': self}
+ 
+-
+ def __WCS_unpickle__(cls, dct, fits_data):
+     """
+     Unpickles a WCS object from a serialized FITS string.
+@@ -3095,7 +3094,6 @@ def __WCS_unpickle__(cls, dct, fits_data):
+ 
+     return self
+ 
+-
+ def find_all_wcs(header, relax=True, keysel=None, fix=True,
+                  translate_units='',
+                  _do_set=True):
+@@ -3186,7 +3184,6 @@ def find_all_wcs(header, relax=True, keysel=None, fix=True,
+ 
+     return result
+ 
+-
+ def validate(source):
+     """
+     Prints a WCS validation report for the given FITS file.
+2026-07-15 05:43:52,506 - INFO - Eval script for astropy__astropy-7746 written to logs/run_evaluation/atlas-final-issue-36-attempt-1/atlas-agentic-platform/astropy__astropy-7746/eval.sh; copying to container...
+2026-07-15 05:43:57,653 - INFO - Test runtime: 5.10 seconds
+2026-07-15 05:43:57,653 - INFO - Test output for astropy__astropy-7746 written to logs/run_evaluation/atlas-final-issue-36-attempt-1/atlas-agentic-platform/astropy__astropy-7746/test_output.txt
+2026-07-15 05:43:57,695 - INFO - Git diff after:
+diff --git a/astropy/wcs/wcs.py b/astropy/wcs/wcs.py
+index d3a06f2b31..44c81f2d83 100644
+--- a/astropy/wcs/wcs.py
++++ b/astropy/wcs/wcs.py
+@@ -66,10 +66,8 @@ __all__ = ['FITSFixedWarning', 'WCS', 'find_all_wcs',
+            'NonseparableSubimageCoordinateSystemError',
+            'NoWcsKeywordsFoundError', 'InvalidTabularParametersError']
+ 
+-
+ __doctest_skip__ = ['WCS.all_world2pix']
+ 
+-
+ if _wcs is not None:
+     _parsed_version = _wcs.__version__.split('.')
+     if int(_parsed_version[0]) == 5 and int(_parsed_version[1]) < 8:
+@@ -121,7 +119,6 @@ else:
+     NoWcsKeywordsFoundError = None
+     InvalidTabularParametersError = None
+ 
+-
+ # Additional relax bit flags
+ WCSHDO_SIP = 0x80000
+ 
+@@ -131,7 +128,6 @@ WCSHDO_SIP = 0x80000
+ # Keyword optionally ends with a capital letter.
+ SIP_KW = re.compile('''^[AB]P?_1?[0-9]_1?[0-9][A-Z]?$''')
+ 
+-
+ def _parse_keysel(keysel):
+     keysel_flags = 0
+     if keysel is not None:
+@@ -151,7 +147,6 @@ def _parse_keysel(keysel):
+ 
+     return keysel_flags
+ 
+-
+ class NoConvergence(Exception):
+     """
+     An error class used to report non-convergence and/or divergence
+@@ -203,7 +198,6 @@ class NoConvergence(Exception):
+                           "future.".format(list(kwargs)),
+                           AstropyDeprecationWarning)
+ 
+-
+ class FITSFixedWarning(AstropyWarning):
+     """
+     The warning raised when the contents of the FITS header have been
+@@ -211,7 +205,6 @@ class FITSFixedWarning(AstropyWarning):
+     """
+     pass
+ 
+-
+ class WCS(WCSBase):
+     """WCS objects perform standard WCS transformations, and correct for
+     `SIP`_ and `distortion paper`_ table-lookup transformations, based
+@@ -1212,12 +1205,25 @@ reduce these to 2 dimensions using the naxis kwarg.
+         """
+ 
+         def _return_list_of_arrays(axes, origin):
++            if all(axis.size == 0 for axis in axes):
++                try:
++                    axes = np.broadcast_arrays(*axes)
++                except ValueError:
++                    raise ValueError(
++                        "Coordinate arrays are not broadcastable to each other")
++                return [np.empty(axis.shape, dtype=float) for axis in axes]
+             try:
++                original_sizes = [axis.size for axis in axes]
+                 axes = np.broadcast_arrays(*axes)
+             except ValueError:
+                 raise ValueError(
+                     "Coordinate arrays are not broadcastable to each other")
+ 
++            if any(size == 0 for size in original_sizes) and \
++               any(size > 0 for size in original_sizes):
++                raise ValueError(
++                    "Coordinate arrays are not broadcastable to each other")
++
+             xy = np.hstack([x.reshape((x.size, 1)) for x in axes])
+ 
+             if ra_dec_order and sky == 'input':
+@@ -1235,6 +1241,10 @@ reduce these to 2 dimensions using the naxis kwarg.
+                 raise ValueError(
+                     "When providing two arguments, the array must be "
+                     "of shape (N, {0})".format(self.naxis))
++
++            if xy.shape[0] == 0:
++                return np.empty((0, self.naxis))
++
+             if ra_dec_order and sky == 'input':
+                 xy = self._denormalize_sky(xy)
+             result = func(xy, origin)
+@@ -1430,10 +1440,8 @@ reduce these to 2 dimensions using the naxis kwarg.
+         # A more detailed discussion can be found here:
+         # https://github.com/astropy/astropy/pull/2373
+         #
+-        #
+         #                  ### Background ###
+         #
+-        #
+         # I will refer here to the [SIP Paper]
+         # (http://fits.gsfc.nasa.gov/registry/sip/SIP_distortion_v1_0.pdf).
+         # According to this paper, the effect of distortions as
+@@ -1470,10 +1478,8 @@ reduce these to 2 dimensions using the naxis kwarg.
+         # | `T`           | `all_pix2world()`            |
+         # | `x+f(x)`      | `pix2foc()`                  |
+         #
+-        #
+         #      ### Direct Solving of Equation (2)  ###
+         #
+-        #
+         # In order to find the pixel coordinates that correspond to
+         # given world coordinates `w`, it is necessary to invert
+         # equation (2): `x=T^{-1}(w)`, or solve equation `w==T(x)`
+@@ -1486,10 +1492,8 @@ reduce these to 2 dimensions using the naxis kwarg.
+         # (essentially because `all_pix2world` may return points with
+         # a different phase than user's input `w`).
+         #
+-        #
+         #      ### Description of the Method Used here ###
+         #
+-        #
+         # By applying inverse linear WCS transformation (`W^{-1}`)
+         # to both sides of equation (2) and introducing notation `x'`
+         # (prime) for the pixels coordinates obtained from the world
+@@ -1567,10 +1571,8 @@ reduce these to 2 dimensions using the naxis kwarg.
+         # `sip`, `cpdis1`, `cpdis2`, `det2im1`, and `det2im2` are
+         # *all* `None`.
+         #
+-        #
+         #         ### Outline of the Algorithm ###
+         #
+-        #
+         # While the proposed code is relatively long (considering
+         # the simplicity of the algorithm), this is due to: 1)
+         # checking if iterative solution is necessary at all; 2)
+@@ -1609,7 +1611,6 @@ reduce these to 2 dimensions using the naxis kwarg.
+         # is the number of points to be converted simultaneously to
+         # image coordinates.
+         #
+-        #
+         #                ###  IMPORTANT NOTE:  ###
+         #
+         # If, in the future releases of the `~astropy.wcs`,
+@@ -1836,7 +1837,6 @@ reduce these to 2 dimensions using the naxis kwarg.
+         `~astropy.wcs.WCS.all_pix2world` with complete
+         distortion model.
+ 
+-
+         Parameters
+         ----------
+         {0}
+@@ -3079,7 +3079,6 @@ reduce these to 2 dimensions using the naxis kwarg.
+         from ..visualization.wcsaxes import WCSAxes
+         return WCSAxes, {'wcs': self}
+ 
+-
+ def __WCS_unpickle__(cls, dct, fits_data):
+     """
+     Unpickles a WCS object from a serialized FITS string.
+@@ -3095,7 +3094,6 @@ def __WCS_unpickle__(cls, dct, fits_data):
+ 
+     return self
+ 
+-
+ def find_all_wcs(header, relax=True, keysel=None, fix=True,
+                  translate_units='',
+                  _do_set=True):
+@@ -3186,7 +3184,6 @@ def find_all_wcs(header, relax=True, keysel=None, fix=True,
+ 
+     return result
+ 
+-
+ def validate(source):
+     """
+     Prints a WCS validation report for the given FITS file.
+2026-07-15 05:43:57,695 - INFO - Git diff changed after running eval script
+2026-07-15 05:43:57,695 - INFO - Grading answer for astropy__astropy-7746...
+2026-07-15 05:43:57,696 - INFO - report: {'astropy__astropy-7746': {'patch_is_None': False, 'patch_exists': True, 'patch_successfully_applied': True, 'resolved': False, 'tests_status': {'FAIL_TO_PASS': {'success': [], 'failure': ['astropy/wcs/tests/test_wcs.py::test_zero_size_input']}, 'PASS_TO_PASS': {'success': ['astropy/wcs/tests/test_wcs.py::TestMaps::test_consistency', 'astropy/wcs/tests/test_wcs.py::TestMaps::test_maps', 'astropy/wcs/tests/test_wcs.py::TestSpectra::test_consistency', 'astropy/wcs/tests/test_wcs.py::TestSpectra::test_spectra', 'astropy/wcs/tests/test_wcs.py::test_fixes', 'astropy/wcs/tests/test_wcs.py::test_outside_sky', 'astropy/wcs/tests/test_wcs.py::test_pix2world', 'astropy/wcs/tests/test_wcs.py::test_load_fits_path', 'astropy/wcs/tests/test_wcs.py::test_dict_init', 'astropy/wcs/tests/test_wcs.py::test_extra_kwarg', 'astropy/wcs/tests/test_wcs.py::test_3d_shapes', 'astropy/wcs/tests/test_wcs.py::test_preserve_shape', 'astropy/wcs/tests/test_wcs.py::test_broadcasting', 'astropy/wcs/tests/test_wcs.py::test_shape_mismatch', 'astropy/wcs/tests/test_wcs.py::test_invalid_shape', 'astropy/wcs/tests/test_wcs.py::test_warning_about_defunct_keywords', 'astropy/wcs/tests/test_wcs.py::test_warning_about_defunct_keywords_exception', 'astropy/wcs/tests/test_wcs.py::test_to_header_string', 'astropy/wcs/tests/test_wcs.py::test_to_fits', 'astropy/wcs/tests/test_wcs.py::test_to_header_warning', 'astropy/wcs/tests/test_wcs.py::test_no_comments_in_header', 'astropy/wcs/tests/test_wcs.py::test_find_all_wcs_crash', 'astropy/wcs/tests/test_wcs.py::test_validate', 'astropy/wcs/tests/test_wcs.py::test_validate_with_2_wcses', 'astropy/wcs/tests/test_wcs.py::test_crpix_maps_to_crval', 'astropy/wcs/tests/test_wcs.py::test_all_world2pix', 'astropy/wcs/tests/test_wcs.py::test_scamp_sip_distortion_parameters', 'astropy/wcs/tests/test_wcs.py::test_fixes2', 'astropy/wcs/tests/test_wcs.py::test_unit_normalization', 'astropy/wcs/tests/test_wcs.py::test_footprint_to_file', 'astropy/wcs/tests/test_wcs.py::test_validate_faulty_wcs', 'astropy/wcs/tests/test_wcs.py::test_error_message', 'astropy/wcs/tests/test_wcs.py::test_out_of_bounds', 'astropy/wcs/tests/test_wcs.py::test_calc_footprint_1', 'astropy/wcs/tests/test_wcs.py::test_calc_footprint_2', 'astropy/wcs/tests/test_wcs.py::test_calc_footprint_3', 'astropy/wcs/tests/test_wcs.py::test_sip', 'astropy/wcs/tests/test_wcs.py::test_printwcs', 'astropy/wcs/tests/test_wcs.py::test_invalid_spherical', 'astropy/wcs/tests/test_wcs.py::test_no_iteration', 'astropy/wcs/tests/test_wcs.py::test_sip_tpv_agreement', 'astropy/wcs/tests/test_wcs.py::test_tpv_copy', 'astropy/wcs/tests/test_wcs.py::test_hst_wcs', 'astropy/wcs/tests/test_wcs.py::test_list_naxis', 'astropy/wcs/tests/test_wcs.py::test_sip_broken', 'astropy/wcs/tests/test_wcs.py::test_no_truncate_crval', 'astropy/wcs/tests/test_wcs.py::test_no_truncate_crval_try2', 'astropy/wcs/tests/test_wcs.py::test_no_truncate_crval_p17', 'astropy/wcs/tests/test_wcs.py::test_no_truncate_using_compare', 'astropy/wcs/tests/test_wcs.py::test_passing_ImageHDU', 'astropy/wcs/tests/test_wcs.py::test_inconsistent_sip', 'astropy/wcs/tests/test_wcs.py::test_bounds_check', 'astropy/wcs/tests/test_wcs.py::test_naxis', 'astropy/wcs/tests/test_wcs.py::test_sip_with_altkey', 'astropy/wcs/tests/test_wcs.py::test_to_fits_1', 'astropy/wcs/tests/test_wcs.py::test_keyedsip'], 'failure': []}, 'FAIL_TO_FAIL': {'success': [], 'failure': []}, 'PASS_TO_FAIL': {'success': [], 'failure': []}}}}
+Result for astropy__astropy-7746: resolved: False
+2026-07-15 05:43:57,696 - INFO - Attempting to stop container sweb.eval.astropy__astropy-7746.atlas-final-issue-36-attempt-1...
+2026-07-15 05:44:12,825 - INFO - Attempting to remove container sweb.eval.astropy__astropy-7746.atlas-final-issue-36-attempt-1...
+2026-07-15 05:44:12,836 - INFO - Container sweb.eval.astropy__astropy-7746.atlas-final-issue-36-attempt-1 removed.
+2026-07-15 05:44:12,836 - INFO - Attempting to remove image swebench/sweb.eval.x86_64.astropy_1776_astropy-7746:latest...
+2026-07-15 05:44:13,098 - INFO - Image swebench/sweb.eval.x86_64.astropy_1776_astropy-7746:latest removed.
