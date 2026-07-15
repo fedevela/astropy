@@ -1231,6 +1231,9 @@ reduce these to 2 dimensions using the naxis kwarg.
                 raise ValueError(
                     "Coordinate arrays are not broadcastable to each other")
 
+            if sky == 'output' and all(axis.size == 0 for axis in axes):
+                return [np.empty(axes[0].shape) for _ in range(self.naxis)]
+
             xy = np.hstack([x.reshape((x.size, 1)) for x in axes])
 
             if ra_dec_order and sky == 'input':
@@ -1256,6 +1259,8 @@ reduce these to 2 dimensions using the naxis kwarg.
                 raise ValueError(
                     "When providing two arguments, the array must be "
                     "of shape (N, {0})".format(self.naxis))
+            if sky == 'output' and xy.shape[0] == 0:
+                return np.empty((0, self.naxis))
             if ra_dec_order and sky == 'input':
                 xy = self._denormalize_sky(xy)
             result = func(xy, origin)
