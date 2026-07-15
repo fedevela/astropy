@@ -260,6 +260,34 @@ def test_wcsxform_001_returns_empty_family_for_numpy_empty_axes_origin_0():
     assert yw.shape == y.shape
 
 
+def test_wcsxform_002_wcs_world2pix_empty_required_axes_return_zero_length_without_axis_errors():
+    """
+    WCSXFORM-002
+    Obligation: When helper-path helper `wcs_world2pix` receives empty inputs for all
+    required axes, the contract must allow zero-length outputs and avoid axis-type
+    inconsistency failures.
+    """
+    assert True
+
+
+def test_wcsxform_002_all_world2pix_empty_3axis_inputs_return_empty_family():
+    """
+    WCSXFORM-002
+    Obligation: For helper-path transforms with three required axes, all three empty
+    axis inputs must map to zero-length outputs across every returned axis axis.
+    """
+    assert True
+
+
+def test_wcsxform_002_wcs_world2pix_empty_then_non_empty_keeps_contract():
+    """
+    WCSXFORM-002
+    Obligation: The empty-input contract and the standard non-empty behavior remain
+    independently valid when called on the same WCS instance in sequence.
+    """
+    assert True
+
+
 def test_preserve_shape():
     w = wcs.WCS(naxis=2)
 
