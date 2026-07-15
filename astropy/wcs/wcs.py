@@ -1264,6 +1264,12 @@ reduce these to 2 dimensions using the naxis kwarg.
         # O3: Only empty-input short-circuits are allowed to alter control flow;
         #     all non-empty calls must execute the same conversion + transform + reshape
         #     sequence as pre-fix behavior.
+        # [GUID: WCSXFORM-005]
+        # Malformed-non-empty preservation:
+        # M1: preserve all legacy exception class/message behavior for malformed payloads.
+        # M2: all-empty short-circuit is only valid after broadcast normalization when all
+        #     required axes are empty.
+        # M3: partial-emptiness is not empty-input success; it must preserve mismatch errors.
 
         def _return_list_of_arrays(axes, origin):
             try:
@@ -1273,6 +1279,10 @@ reduce these to 2 dimensions using the naxis kwarg.
                 raise ValueError(
                     "Coordinate arrays are not broadcastable to each other")
 
+            # [GUID: WCSXFORM-005]
+            # Failure path:
+            # - if one or more axes are empty and one or more axes are non-empty,
+            #   this is malformed mixed input and must raise legacy broadcast ValueError.
             if any(size == 0 for size in original_sizes) and \
                any(size > 0 for size in original_sizes):
                 raise ValueError(
@@ -1360,6 +1370,11 @@ reduce these to 2 dimensions using the naxis kwarg.
         # - Route into _array_converter unchanged to preserve helper-path behavior.
         # - Empty required-axis batches must use helper empty-output short-circuit.
         # - Preserve existing full-distortion invocation for non-empty inputs.
+        # [GUID: WCSXFORM-005]
+        # Peer-path obligation:
+        # - malformed non-empty payloads remain delegated through `_array_converter` to preserve
+        #   legacy validation behavior and exception identity.
+        # - no alternate empty-input interpretation path is introduced for malformed shapes.
         return self._array_converter(
             self._all_pix2world, 'output', *args, **kwargs)
     all_pix2world.__doc__ = """
@@ -1465,6 +1480,13 @@ reduce these to 2 dimensions using the naxis kwarg.
         # 4) The returned value must be structurally identical to prior behavior:
         #    same axis ordering, same container class, and same shape for all valid non-empty
         #    test-covered calls.
+        # [GUID: WCSXFORM-005]
+        # Malformed-non-empty obligation:
+        # 1) do not add new pre-validation in this method.
+        # 2) keep full delegation to `_array_converter` so existing exception order/typing
+        #    remains unchanged.
+        # 3) empty-input success is only the existing shared helper short-circuit, not a new
+        #    branch in this method.
         return self._array_converter(
             lambda xy, o: self.wcs.p2s(xy, o)['world'],
             'output', *args, **kwargs)
@@ -1947,6 +1969,11 @@ reduce these to 2 dimensions using the naxis kwarg.
         # - empty required-axis inputs must return per-axis empty arrays without invoking
         #   iterative wcslib path.
         # - non-empty and malformed cases keep existing behavior.
+        # [GUID: WCSXFORM-005]
+        # Same-helper-path peer rule:
+        # - malformed non-empty payloads for this path must preserve legacy validation failures
+        #   and must not flow into the all-empty success branch.
+        # - empty-input success remains constrained to true all-axis empty broadcast inputs only.
         return self._array_converter(
             lambda *args, **kwargs:
             self._all_world2pix(
@@ -2300,6 +2327,12 @@ reduce these to 2 dimensions using the naxis kwarg.
         #    - retain method-level state; next non-empty invocation must behave as normal.
         # 3) Non-empty transition:
         #    - call _array_converter and keep existing world->pixel wcslib flow.
+        # [GUID: WCSXFORM-005]
+        # Same-path peer obligation:
+        # 1) malformed non-empty payloads must preserve existing validation class/message behavior;
+        #    no remapping through empty-input success path.
+        # 2) world2pix uses the same `_array_converter` branching as pix2world peers and must
+        #    remain behavior-equivalent for malformed-branch outcomes.
         return self._array_converter(
             lambda xy, o: self.wcs.s2p(xy, o)['pixcrd'],
             'input', *args, **kwargs)
