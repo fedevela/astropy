@@ -2,7 +2,9 @@
 
 from io import StringIO
 
+from astropy import units as u
 from astropy.io import ascii
+from astropy.table import QTable
 
 from .common import assert_almost_equal, assert_equal
 
@@ -215,19 +217,17 @@ ASTRST_VERIFICATION_MAPPING = {
 
 
 def test_astrst_001_rst_writer_header_rows_supported():
-    """ASTRST-001: placeholder contract artifact for ascii.rst header_rows write option."""
-    # ASTRST-001 logic obligation:
-    # - Verify traceability that the writer constructor path accepts header_rows.
-    # - Runtime behavior is enforced by writer tests and caller surface calls.
-    # - No parser/reader logic is part of this obligation.
-    assert True
+    """ASTRST-001: ascii.rst accepts write-time header_rows for quantity columns."""
+    table = QTable()
+    table["distance"] = [1.2, 2.4] * u.m
+    table["time"] = [3.1, 4.2] * u.s
 
+    out = StringIO()
+    ascii.write(table, out, format="ascii.rst", header_rows=["name", "unit"])
+    lines = out.getvalue().splitlines()
 
-def test_astrst_006_rst_reader_writer_regression_contract_stability():
-    """ASTRST-006: placeholder contract artifact for read/write regression expectations."""
-    # ASTRST-006 logic obligation:
-    # - Keep pass-to-pass reader contracts in test_read_* and test_write_normal unchanged.
-    # - Require no reader/parser behavior edits while adding writer option support.
-    # - This placeholder anchors regression intent; dedicated tests remain explicit
-    #   above and define behavioral baselines.
-    assert True
+    assert len(lines) == 7
+    assert lines[0] == lines[3] == lines[-1]
+    assert set(lines[0].strip()) == {"="}
+    assert lines[1].split() == ["distance", "time"]
+    assert lines[2].split() == ["m", "s"]

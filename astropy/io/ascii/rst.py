@@ -77,9 +77,12 @@ class RST(FixedWidth):
         # INPUT: list `lines` from FixedWidth write formatting.
         # TRANSITION:
         #   1) Keep parent's column-alignment behavior untouched.
-        #   2) Build final framed output by prepending and appending divider row (lines[1]).
+        #   2) Build final framed output by prepending and appending divider row at the
+        #      post-header separator position.
         # OUTPUT: rst body wrapped by identical border lines.
         # LIMIT: No reader parsing behavior, validation, or path branching.
         lines = super().write(lines)
-        lines = [lines[1]] + lines + [lines[1]]
+        header_rows = getattr(self.data, "header_rows", ["name"])
+        border = lines[len(header_rows)]
+        lines = [border] + lines + [border]
         return lines
