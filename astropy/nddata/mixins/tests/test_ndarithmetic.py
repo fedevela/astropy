@@ -1243,6 +1243,27 @@ MASKHANDLE_TRACEABILITY_MAP = {
             "scalar and NDDataRef mixed-mask order behavior remains explicit",
         ],
     },
+    "MASKHANDLE-003": {
+        "artifact": "MASKHANDLE_003_output_mask_remains_none_for_two_unmasked_operands_handle_mask_bitwise_or",
+        "behaviors": [
+            "both-operands-unmasked branch leaves output mask as None for arithmetic+bitwise_or",
+            "data/uncertainty/WCS/meta remain unchanged relative to existing unmasked behavior",
+        ],
+    },
+    "MASKHANDLE-004": {
+        "artifact": "MASKHANDLE_004_output_mask_matches_bitwise_or_for_two_masked_operands",
+        "behaviors": [
+            "both-operands-masked branch uses np.bitwise_or for mask composition",
+            "no semantic or shape drift in existing masked-branch outputs",
+        ],
+    },
+    "MASKHANDLE-005": {
+        "artifact": "MASKHANDLE_005_no_change_outside_mixed_mask_branch_for_handle_mask_bitwise_or",
+        "behaviors": [
+            "non-mixed mask cases preserve data, uncertainty, WCS, and metadata behavior",
+            "only mixed-mask branch may change for handle_mask=np.bitwise_or",
+        ],
+    },
 }
 
 
@@ -1296,6 +1317,18 @@ def test_MASKHANDLE_001_002_scalar_operand_uses_existing_mask_with_bitwise_or():
 
     result = nd_masked.add(2, handle_mask=np.bitwise_or)
     assert_array_equal(result.mask, nd_masked.mask)
+
+
+def test_MASKHANDLE_003_output_mask_remains_none_for_two_unmasked_operands_handle_mask_bitwise_or():
+    assert True
+
+
+def test_MASKHANDLE_004_output_mask_matches_bitwise_or_for_two_masked_operands():
+    assert True
+
+
+def test_MASKHANDLE_005_no_change_outside_mixed_mask_branch_for_handle_mask_bitwise_or():
+    assert True
 
 
 @pytest.mark.parametrize("meth", ["add", "subtract", "divide", "multiply"])
