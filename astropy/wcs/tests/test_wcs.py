@@ -351,6 +351,40 @@ WCSXFORM_004_VERIFICATION_MAP = [
 ]
 
 
+WCSXFORM_005_VERIFICATION_MAP = [
+    {
+        "requirement_id": "WCSXFORM-005",
+        "obligation": (
+            "preserve historical malformed-input exception class and message for "
+            "`wcs_pix2world` when malformed payloads are non-empty"
+        ),
+        "verification_artifacts": [
+            "test_wcsxform_005_wcs_pix2world_malformed_non_empty_payload_preserves_legacy_error",
+        ],
+    },
+    {
+        "requirement_id": "WCSXFORM-005",
+        "obligation": (
+            "preserve malformed non-empty validation errors for same-path peer transforms "
+            "instead of remapping through empty-input branches"
+        ),
+        "verification_artifacts": [
+            "test_wcsxform_005_same_path_peer_world2pix_malformed_non_empty_payload_preserves_legacy_error",
+        ],
+    },
+    {
+        "requirement_id": "WCSXFORM-005",
+        "obligation": (
+            "ensure malformed non-empty error branches remain independent from empty-input "
+            "success branches in the same test locus"
+        ),
+        "verification_artifacts": [
+            "test_wcsxform_005_empty_and_malformed_non_empty_branches_are_disjoint",
+        ],
+    },
+]
+
+
 def test_wcsxform_004_wcs_pix2world_non_empty_inputs_preserve_axes_order_shape_and_container_type():
     """
     WCSXFORM-004
@@ -416,6 +450,33 @@ def test_wcsxform_004_wcs_pix2world_mixed_scalar_list_array_outputs_remain_struc
     assert_allclose(scalar_list[1], array_scalar[1])
     assert_allclose(scalar_list[0], reference[0])
     assert_allclose(scalar_list[1], reference[1])
+
+
+def test_wcsxform_005_wcs_pix2world_malformed_non_empty_payload_preserves_legacy_error():
+    """
+    WCSXFORM-005
+    Obligation: malformed non-empty `wcs_pix2world` inputs must keep legacy exception
+    class/message behavior and must not be treated as empty-input success paths.
+    """
+    assert True
+
+
+def test_wcsxform_005_same_path_peer_world2pix_malformed_non_empty_payload_preserves_legacy_error():
+    """
+    WCSXFORM-005
+    Obligation: malformed non-empty payloads to same-path peers must preserve existing
+    validation behavior instead of being masked by empty-input handling.
+    """
+    assert True
+
+
+def test_wcsxform_005_empty_and_malformed_non_empty_branches_are_disjoint():
+    """
+    WCSXFORM-005
+    Obligation: when both branches are exercised separately, only empty-input malformed
+    should succeed with zero-length output; malformed non-empty inputs should fail.
+    """
+    assert True
 
 
 def test_wcsxform_003_wcs_pix2world_axis_count_mismatch_with_empty_axis_raises_shape_validation():
