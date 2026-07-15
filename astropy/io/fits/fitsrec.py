@@ -1307,7 +1307,7 @@ class FITS_rec(np.recarray):
             # IF format contains 'D':
             #   replaced = output_field.replace(encode_ascii('E'),
             #                                  encode_ascii('D'))
-            #   output_field = replaced
+            #   output_field[...] = replaced
             #   (Downstream writer reads updated `output_field`.)
             # ELSE:
             #   pass
@@ -1316,8 +1316,8 @@ class FITS_rec(np.recarray):
             #   If no 'E' exponent bytes are present, assignment is a no-op.
             #   If earlier validation overflow occurs, ValueError is already
             #   raised before reaching this branch.
-            output_field = output_field.replace(encode_ascii('E'),
-                                               encode_ascii('D'))
+            output_field[:] = output_field.replace(encode_ascii('E'),
+                                                  encode_ascii('D'))
 
 
 

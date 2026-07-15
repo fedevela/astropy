@@ -2,6 +2,14 @@
 
 """Verification traceability for DEXP-002."""
 
+import io
+import re
+
+import numpy as np
+
+from ....io import fits
+from ..header import _pad_length
+
 from . import FitsTestCase
 
 
@@ -116,20 +124,79 @@ DEXP_002_POC_PLACEMENT = {
 
 
 class TestDEXP002Traceability(FitsTestCase):
+    @staticmethod
+    def _table_payload(hdu):
+        stream = io.BytesIO()
+        hdu.writeto(stream)
+        stream.seek(0)
+        return stream.getvalue()
+
+    @staticmethod
+    def _first_ascii_data_line(payload):
+        text = payload.decode('ascii')
+        lines = text.splitlines()
+
+        try:
+            end_idx = lines.index('END')
+        except ValueError:
+            raise AssertionError('Expected ASCII table header to include END.')
+
+        for line in lines[end_idx + 1:]:
+            if line.strip():
+                return line
+
+        raise AssertionError('Expected ASCII table data row in written payload.')
+
+    @staticmethod
+    def _d_table_hdu(value):
+        column = fits.Column(name='x', format='D15.7', array=np.array([value]))
+        return fits.TableHDU.from_columns([column])
+
     def test_dexp_002_write_output_observes_d_conversion(self):
         """
         DEXP-002 Scenario: Write output observes D conversion.
         """
-        assert True
+        hdu = self._d_table_hdu(1.2345e20)
+
+        payload = self._table_payload(hdu)
+        row = self._first_ascii_data_line(payload)
+
+        assert 'D' in row
+        assert 'E' not in row
+        assert re.search(r'D[+-]\d\d', row)
 
     def test_dexp_002_checksum_path_observes_d_conversion(self):
         """
         DEXP-002 Scenario: Checksum path observes D conversion.
         """
-        assert True
+        hdu = self._d_table_hdu(1.2345e20)
+
+        observed = {}
+
+        original_compute_checksum = hdu._compute_checksum
+
+        def capture_compute_checksum(data, sum32=0):
+            observed['data_bytes_len'] = len(data)
+            observed['data_bytes'] = bytes(data)
+            observed['data_sum'] = original_compute_checksum(data, sum32)
+            return observed['data_sum']
+
+        hdu._compute_checksum = capture_compute_checksum.__get__(hdu, type(hdu))
+        hdu.writeto(io.BytesIO(), checksum='datasum')
+
+        assert observed['data_bytes_len'] == hdu.size + _pad_length(hdu.size)
+        assert b'D' in observed['data_bytes']
+        assert b'E' not in observed['data_bytes']
+        assert int(hdu.header['DATASUM']) == observed['data_sum']
 
     def test_dexp_002_no_local_only_transformation_for_d_conversion(self):
         """
         DEXP-002 Scenario: No local-only transformation remains.
         """
-        assert True
+        hdu = self._d_table_hdu(1.2345e20)
+
+        hdu.data._scale_back()
+
+        row = str(hdu.data['x'][0])
+        assert 'D' in row
+        assert 'E' not in row
