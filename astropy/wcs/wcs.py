@@ -1215,6 +1215,28 @@ reduce these to 2 dimensions using the naxis kwarg.
             # WCS-003: empty-input short-circuit must preserve the established
             # per-input-style container convention while returning empty world
             # axis arrays.
+            # WCS-004: mixed non-empty/empty axes must not be diverted to the
+            # no-op empty-output branch.
+            # 1) Precondition: `axes` may include a mix of empty and non-empty
+            #    1-D inputs for the same call path.
+            # 2) Decision:
+            #    - compute `all_empty = all(axis.size == 0 for axis in axes)`
+            #    - compute `has_non_empty = any(axis.size > 0 for axis in axes)`
+            # 3) Transition:
+            #    - if `sky == 'output'` and `all_empty` is true:
+            #        branch to empty-output construction and return immediately.
+            #    - otherwise continue through validation/conversion path.
+            # 4) Validation/error behavior:
+            #    - `np.broadcast_arrays(*axes)` remains authoritative for shape
+            #      compatibility checks.
+            #    - any `ValueError` from broadcast remains a hard validation failure
+            #      (not empty-input suppression).
+            #    - follow-on `hstack` dimensional checks in this same non-empty branch
+            #      must continue to raise for mixed-size/invalid structure.
+            # 5) Repeatability + isolation:
+            #    - do not mutate cached state for the mixed-input branch;
+            #    - each invocation re-runs the same checks so repeated invalid
+            #      mixed calls fail identically.
             # WCS-002: deterministic multi-axis empty-input behavior.
             # 2.1) Obligation 1 (3-axis tuple): accept 3-tuples of empty inputs as
             #      axis-segment inputs, broadcast-compatible with shape ()/shape (0,),
@@ -1303,6 +1325,17 @@ reduce these to 2 dimensions using the naxis kwarg.
         elif len(args) == self.naxis + 1:
             # WCS-002: N-axis tuple call form (`arg1, arg2, ... , argN, origin`) is the
             # primary locus for multi-axis empty-input obligations.
+            # WCS-004: mixed invalid-structure behavior and failure-state isolation.
+            # 1) On every call:
+            #    - detect axis inputs as `args[:-1]` and parse `origin = args[-1]`.
+            #    - convert each axis with `np.asarray`; do not short-circuit on partial
+            #      emptiness at this stage.
+            # 2) If input normalization raises, surface `TypeError` as before.
+            # 3) After dispatching to `_return_list_of_arrays`, mixed
+            #    non-empty/empty shapes must flow into normal validation checks and
+            #    either raise or transform based on existing rules.
+            # 4) No cross-call flag/state is introduced; failure path from a prior
+            #    mixed invalid invocation must not influence a later all-empty call.
             input_container_mode = "ndarray" if all(
                 isinstance(x, np.ndarray) for x in args[:-1]) else "list"
             axes = args[:-1]
