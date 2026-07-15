@@ -321,17 +321,35 @@ class NDArithmeticMixin:
             )
 
         if handle_mask is None:
+            # MASKHANDLE-001: in mixed-mask operations, explicit "disable mask" contract.
+            # State: handle_mask disabled.
+            # Action: result.mask must be None regardless of any present operand mask.
             pass
         elif hasattr(result, "mask"):
+            # MASKHANDLE-001/MASKHANDLE-002: masked-array-backed result path.
+            # State: arithmetic produced its own mask payload.
+            # Action: delegate mask capture to the masked object constructor behavior.
             # if numpy.ma or astropy.utils.masked is being used, the constructor
             # will pick up the mask from the masked object:
             kwargs["mask"] = None
         elif handle_mask in ["ff", "first_found"]:
+            # MASKHANDLE-001: first-found branch (outside mixed-mask callable semantics).
+            # Decision:
+            # 1) if self has no mask -> copy operand.mask
+            # 2) else -> copy self.mask
+            # Invariant: no call to handle_mask from this branch.
             if self.mask is None:
                 kwargs["mask"] = deepcopy(operand.mask)
             else:
                 kwargs["mask"] = deepcopy(self.mask)
         else:
+            # MASKHANDLE-001 + MASKHANDLE-002: callable branch for mask composition.
+            # Decision chain (pseudocode):
+            # INPUTS: self.mask, operand.mask, handle_mask (e.g. np.bitwise_or).
+            # IF self.mask is None and operand.mask is None -> None.
+            # IF exactly one mask is not None -> deepcopy(that one mask).
+            # IF both masks are not None -> handle_mask(self.mask, operand.mask, **kwds).
+            # Failure path: no call to handle_mask may receive None.
             kwargs["mask"] = self._arithmetic_mask(
                 operation, operand, handle_mask, axis=axis, **kwds2["mask"]
             )
@@ -512,6 +530,17 @@ class NDArithmeticMixin:
             If neither had a mask ``None`` is returned. Otherwise
             ``handle_mask`` must create (and copy) the returned mask.
         """
+        # MASKHANDLE-001 / MASKHANDLE-002 control-flow contract:
+        # 1) mixed-mask identity path:
+        #    - exactly one of self.mask, operand.mask is set -> return deepcopy(other).
+        #    - treat None as no-mask identity.
+        # 2) both-masked path:
+        #    - both masks present -> kwargs["mask"] = handle_mask(self.mask, operand.mask, **kwds)
+        #    - operand can be None only for collapse operations.
+        # 3) no-mask path:
+        #    - neither mask present or handle_mask is None -> None.
+        # Failure guard:
+        #    - never invoke handle_mask with either mask argument equal to None.
         # If only one mask is present we need not bother about any type checks
         if (
             self.mask is None and operand is not None and operand.mask is None
