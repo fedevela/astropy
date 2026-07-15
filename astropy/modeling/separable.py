@@ -231,6 +231,22 @@ def _cstack(left, right):
         Result from this operation.
 
     """
+    # AST12907-001 (nested "&" associativity normalization)
+    # ------------------------------------------------------
+    # Pseudocode (control-flow, no runtime changes):
+    # 1) Treat "&" as a structural join between two coordinate blocks.
+    # 2) Normalize both operands to a canonical left-to-right list of blocks:
+    #    - If operand is a Model: use its direct coord_matrix for that side.
+    #    - If operand is an ndarray from recursive composition: use block values as-is
+    #      with a deterministic positional placement contract.
+    # 3) Compute total outputs with _compute_n_outputs(left, right).
+    # 4) Allocate output matrix (noutp, total_inputs_of_operand_blocks).
+    # 5) Place each normalized block without reinterpreting nesting depth:
+    #    - all coordinates of left block(s) occupy the first columns/rows.
+    #    - all coordinates of right block(s) occupy the last columns/rows.
+    # 6) Return hstack of left and right canonical blocks.
+    # 7) Failure path: malformed block shapes must surface through existing
+    #    indexing/shape semantics (no new coercion or semantic rewriting).
     noutp = _compute_n_outputs(left, right)
 
     if isinstance(left, Model):
@@ -304,6 +320,24 @@ def _separable(transform):
     if (transform_matrix := transform._calculate_separability_matrix()) is not NotImplemented:
         return transform_matrix
     elif isinstance(transform, CompoundModel):
+        # AST12907-001 requirement gate: separability must be parenthesization-invariant.
+        #
+        # Pseudocode (state/branching):
+        #  - Input state: transform is a CompoundModel node with fields (left, right, op).
+        #  - Decision: op == "&" ?
+        #    - YES: conceptually flatten consecutive "&" groups before matrix assembly.
+        #           This means:
+        #           a) Visit node.left in-order and node.right in-order.
+        #           b) Build a contiguous sequence of "&" operands.
+        #           c) Fold them with _cstack using only the preserved order.
+        #           d) Preserve output/input dimension mapping deterministically.
+        #    - NO: delegate to existing operator semantics directly.
+        #  - For both branches, recursively compute child matrices with identical
+        #    contract and combine through _operators[op].
+        #  - Success transition: return a matrix where True-dependency entries
+        #    reflect only actual coordinate flow.
+        #  - Failure transition: bubble up existing ModelDefinitionError from child
+        #    combination when dimensions or composition are invalid.
         sepleft = _separable(transform.left)
         sepright = _separable(transform.right)
         return _operators[transform.op](sepleft, sepright)
