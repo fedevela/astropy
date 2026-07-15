@@ -1271,6 +1271,24 @@ class FITS_rec(np.recarray):
             output_field[jdx] = value
 
         # Replace exponent separator in floating point numbers
+        # DEXP-005 branch-constrained pseudocode (DEXP-005):
+        # - Decision locus: `if 'D' in format` in `TableData::_scale_back_ascii`.
+        # - Scope obligation:
+        #   - IF format contains 'D': execute only this branch's normalized
+        #     replacement path.
+        #   - ELSE: execute non-D stability path unchanged.
+        # - State transition:
+        #   - `output_field` is local serialized payload before checksum/write handoff.
+        #   - Only in D-branch rebind local serialized payload to contain `D`
+        #     exponent bytes.
+        #   - In all paths, downstream handoff target remains `_TableBaseHDU::_prewriteto`.
+        # - Failure path:
+        #   - `len(value) > field width` overflow already handled before this block.
+        #   - D-branch replacement is no-op-safe when no `'E'` bytes exist.
+        # - Semantic isolation rule (DEXP-005):
+        #   - No formatter pipeline refactor.
+        #   - No API/behavior changes outside this branch.
+        #   - No non-local D-exponent policy changes.
         # DEXP-004 width/padding/sign invariants:
         # - `fmt` and `fmt.format` define width/alignment/sign semantics.
         # - Non-D formats must bypass any post-format token replacement.
@@ -1307,6 +1325,12 @@ class FITS_rec(np.recarray):
             #   variable before serializer consumption.
             # - test_dexp_001_emits_d_separator_for_d_format_fields
             #   => output bytes contain `D` in the exponent separator.
+            # - test_dexp_005_only_d_branch_is_target_scope
+            #   => conditional executes only under `'D'` format guard.
+            # - test_dexp_005_no_side_effect_path_outside_d_branch
+            #   => non-D path is `else: pass` with zero mutation.
+            # - test_dexp_005_no_new_non_d_exponent_policy
+            #   => exponent policy change remains confined to this branch.
             #
             # PSEUDOCODE:
             # IF format contains 'D':
