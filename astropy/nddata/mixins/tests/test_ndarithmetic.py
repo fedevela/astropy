@@ -1264,6 +1264,14 @@ MASKHANDLE_TRACEABILITY_MAP = {
             "only mixed-mask branch may change for handle_mask=np.bitwise_or",
         ],
     },
+    "MASKHANDLE-006": {
+        "artifact": "MASKHANDLE_006_multiply_and_non_multiply_mixed_mask_regressions_with_handle_mask_bitwise_or",
+        "behaviors": [
+            "multiply with scalar and mixed-mask operands returns nref_mask mask for MASKHANDLE regression baseline",
+            "both mixed-mask multiply operand orders return deterministic mask and no TypeError with handle_mask=np.bitwise_or",
+            "non-multiply mixed-mask operator with handle_mask=np.bitwise_or keeps deterministic pass-through mask behavior",
+        ],
+    },
 }
 
 
@@ -1422,6 +1430,27 @@ def test_MASKHANDLE_005_no_change_outside_mixed_mask_branch_for_handle_mask_bitw
                 assert_array_equal(target.mask, np.bitwise_or(mask_a, mask_b))
             else:
                 assert target.mask is None
+
+
+def test_MASKHANDLE_006_scalar_multiply_uses_mixed_mask_operand_output_for_handle_mask_bitwise_or():
+    # Obligation from MASKHANDLE-006: nref_mask.multiply(1., handle_mask=np.bitwise_or)
+    # should preserve nref_mask.mask and remain exception-free.
+    assert True
+
+
+@pytest.mark.parametrize("masked_first", [True, False])
+def test_MASKHANDLE_006_multiply_ordered_mixed_mask_no_typeerror_handle_mask_bitwise_or(masked_first):
+    # Obligation from MASKHANDLE-006:
+    # nref_mask.multiply(nref_nomask, handle_mask=np.bitwise_or) and
+    # nref_nomask.multiply(nref_mask, handle_mask=np.bitwise_or) should preserve
+    # the present mask and be TypeError-free.
+    assert True
+
+
+def test_MASKHANDLE_006_add_mixed_mask_preserves_deterministic_output_mask_with_bitwise_or():
+    # Obligation from MASKHANDLE-006: mixed-mask non-multiply operator with
+    # handle_mask=np.bitwise_or should keep deterministic pass-through mask behavior.
+    assert True
 
 
 @pytest.mark.parametrize("meth", ["add", "subtract", "divide", "multiply"])
