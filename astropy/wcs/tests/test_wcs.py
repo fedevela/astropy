@@ -425,7 +425,23 @@ def test_wcsxform_006_wcs_pix2world_repeated_empty_inputs_remain_empty_and_state
     Obligation: repeated empty-input invocations on the same `WCS` instance must remain
     empty-output contracts with no mutation-based drift.
     """
-    assert True
+    w = wcs.WCS(naxis=2)
+
+    result_1 = w.wcs_pix2world([], [], 0)
+    result_2 = w.wcs_pix2world([], [], 0)
+
+    assert isinstance(result_1, list)
+    assert isinstance(result_2, list)
+    assert len(result_1) == 2
+    assert len(result_2) == 2
+    assert result_1[0].shape == (0,)
+    assert result_1[1].shape == (0,)
+    assert result_2[0].shape == (0,)
+    assert result_2[1].shape == (0,)
+    assert_allclose(result_1[0], np.array([]))
+    assert_allclose(result_1[1], np.array([]))
+    assert_allclose(result_2[0], np.array([]))
+    assert_allclose(result_2[1], np.array([]))
 
 
 def test_wcsxform_006_empty_nonempty_empty_sequence_keeps_contract_on_one_instance():
@@ -434,7 +450,30 @@ def test_wcsxform_006_empty_nonempty_empty_sequence_keeps_contract_on_one_instan
     Obligation: in an empty -> non-empty -> empty call sequence on the same `WCS` instance,
     the non-empty transform remains valid and both empties remain empty-output.
     """
-    assert True
+    w = wcs.WCS(naxis=2)
+
+    before_empty = w.wcs_pix2world([], [], 0)
+    assert isinstance(before_empty, list)
+    assert before_empty[0].shape == (0,)
+    assert before_empty[1].shape == (0,)
+
+    nonempty = w.wcs_pix2world([1.0, 2.0, 3.0], [4.0, 5.0, 6.0], 0)
+    assert isinstance(nonempty, list)
+    assert len(nonempty) == 2
+    assert nonempty[0].shape == (3,)
+    assert nonempty[1].shape == (3,)
+    assert np.isfinite(nonempty[0]).all()
+    assert np.isfinite(nonempty[1]).all()
+
+    after_empty = w.wcs_pix2world([], [], 0)
+    assert isinstance(after_empty, list)
+    assert after_empty[0].shape == (0,)
+    assert after_empty[1].shape == (0,)
+
+    expected = wcs.WCS(naxis=2)
+    expected_nonempty = expected.wcs_pix2world([1.0, 2.0, 3.0], [4.0, 5.0, 6.0], 0)
+    assert_allclose(nonempty[0], expected_nonempty[0])
+    assert_allclose(nonempty[1], expected_nonempty[1])
 
 
 def test_wcsxform_006_equivalent_fresh_wcs_instances_preserve_empty_nonempty_empty_contract():
@@ -443,7 +482,43 @@ def test_wcsxform_006_equivalent_fresh_wcs_instances_preserve_empty_nonempty_emp
     Obligation: equivalent fresh instances must preserve outputs and error behavior across repeated
     empty/non-empty/empty execution sequences.
     """
-    assert True
+    w_ref = wcs.WCS(naxis=2)
+    w_fresh = wcs.WCS(naxis=2)
+
+    ref_empty_1 = w_ref.wcs_pix2world([], [], 1)
+    ref_nonempty = w_ref.wcs_pix2world([7.0, 8.0, 9.0], [10.0, 11.0, 12.0], 1)
+    ref_empty_2 = w_ref.wcs_pix2world([], [], 1)
+
+    fresh_empty_1 = w_fresh.wcs_pix2world([], [], 1)
+    fresh_nonempty = w_fresh.wcs_pix2world([7.0, 8.0, 9.0], [10.0, 11.0, 12.0], 1)
+    fresh_empty_2 = w_fresh.wcs_pix2world([], [], 1)
+
+    assert isinstance(ref_empty_1, list)
+    assert isinstance(ref_empty_2, list)
+    assert ref_empty_1[0].shape == (0,)
+    assert ref_empty_1[1].shape == (0,)
+    assert ref_empty_2[0].shape == (0,)
+    assert ref_empty_2[1].shape == (0,)
+    assert isinstance(fresh_empty_1, list)
+    assert isinstance(fresh_empty_2, list)
+    assert fresh_empty_1[0].shape == (0,)
+    assert fresh_empty_1[1].shape == (0,)
+    assert fresh_empty_2[0].shape == (0,)
+    assert fresh_empty_2[1].shape == (0,)
+
+    assert_allclose(ref_nonempty[0], fresh_nonempty[0])
+    assert_allclose(ref_nonempty[1], fresh_nonempty[1])
+    assert ref_empty_1[0].shape == fresh_empty_1[0].shape
+    assert ref_empty_1[1].shape == fresh_empty_1[1].shape
+    assert ref_empty_2[0].shape == fresh_empty_2[0].shape
+    assert ref_empty_2[1].shape == fresh_empty_2[1].shape
+
+    with pytest.raises(ValueError) as exc_ref:
+        w_ref.wcs_pix2world([10.0, 11.0, 12.0], [1.0, 2.0], 1)
+    with pytest.raises(ValueError) as exc_fresh:
+        w_fresh.wcs_pix2world([10.0, 11.0, 12.0], [1.0, 2.0], 1)
+
+    assert exc_ref.value.args[0] == exc_fresh.value.args[0]
 
 
 def test_wcsxform_004_wcs_pix2world_non_empty_inputs_preserve_axes_order_shape_and_container_type():
