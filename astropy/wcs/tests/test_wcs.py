@@ -458,7 +458,11 @@ def test_wcsxform_005_wcs_pix2world_malformed_non_empty_payload_preserves_legacy
     Obligation: malformed non-empty `wcs_pix2world` inputs must keep legacy exception
     class/message behavior and must not be treated as empty-input success paths.
     """
-    assert True
+    w = wcs.WCS(naxis=2)
+
+    with pytest.raises(ValueError) as exc:
+        w.wcs_pix2world([10.0, 11.0, 12.0], [1.0, 2.0], 0)
+    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
 
 
 def test_wcsxform_005_same_path_peer_world2pix_malformed_non_empty_payload_preserves_legacy_error():
@@ -467,7 +471,15 @@ def test_wcsxform_005_same_path_peer_world2pix_malformed_non_empty_payload_prese
     Obligation: malformed non-empty payloads to same-path peers must preserve existing
     validation behavior instead of being masked by empty-input handling.
     """
-    assert True
+    w = wcs.WCS(naxis=2)
+
+    with pytest.raises(ValueError) as exc:
+        w.wcs_world2pix([10.0, 11.0, 12.0], [1.0, 2.0], 1)
+    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
+
+    with pytest.raises(ValueError) as exc:
+        w.all_world2pix([10.0, 11.0, 12.0], [1.0, 2.0], 1)
+    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
 
 
 def test_wcsxform_005_empty_and_malformed_non_empty_branches_are_disjoint():
@@ -476,7 +488,37 @@ def test_wcsxform_005_empty_and_malformed_non_empty_branches_are_disjoint():
     Obligation: when both branches are exercised separately, only empty-input malformed
     should succeed with zero-length output; malformed non-empty inputs should fail.
     """
-    assert True
+    w = wcs.WCS(naxis=2)
+
+    empty_pix2world = w.wcs_pix2world([], [], 0)
+    assert isinstance(empty_pix2world, list)
+    assert len(empty_pix2world) == 2
+    assert empty_pix2world[0].shape == (0,)
+    assert empty_pix2world[1].shape == (0,)
+
+    with pytest.raises(ValueError) as exc:
+        w.wcs_pix2world([10.0, 11.0, 12.0], [1.0, 2.0], 0)
+    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
+
+    empty_world2pix = w.wcs_world2pix([], [], 1)
+    assert isinstance(empty_world2pix, list)
+    assert len(empty_world2pix) == 2
+    assert empty_world2pix[0].shape == (0,)
+    assert empty_world2pix[1].shape == (0,)
+
+    with pytest.raises(ValueError) as exc:
+        w.wcs_world2pix([10.0, 11.0], [1.0, 2.0, 3.0], 1)
+    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
+
+    empty_all_world2pix = w.all_world2pix([], [], 1)
+    assert isinstance(empty_all_world2pix, list)
+    assert len(empty_all_world2pix) == 2
+    assert empty_all_world2pix[0].shape == (0,)
+    assert empty_all_world2pix[1].shape == (0,)
+
+    with pytest.raises(ValueError) as exc:
+        w.all_world2pix([10.0, 11.0], [1.0, 2.0, 3.0], 1)
+    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
 
 
 def test_wcsxform_003_wcs_pix2world_axis_count_mismatch_with_empty_axis_raises_shape_validation():
