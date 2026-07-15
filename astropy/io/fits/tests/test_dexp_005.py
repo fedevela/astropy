@@ -4,6 +4,12 @@
 
 """Traceability artifact for DEXP-005 scope preservation."""
 
+import io
+
+import numpy as np
+
+from ....io import fits
+
 from . import FitsTestCase
 
 
@@ -166,23 +172,71 @@ DEXP_005_REQUIREMENT_TO_ARCHITECTURE = {
 class TestDEXP005Traceability(FitsTestCase):
     """Phase-5 placeholder contract verification for DEXP-005."""
 
+    @staticmethod
+    def _output_field(value, format_spec):
+        values = np.array([value], dtype=np.float64)
+        column = fits.Column(name="x", format=format_spec, array=values)
+        hdu = fits.TableHDU.from_columns([column])
+        output_field = hdu.data["x"].copy()
+        hdu.data._scale_back_ascii(0, values, output_field)
+        return output_field[0]
+
+    @staticmethod
+    def _first_ascii_data_line(payload):
+        text = payload.decode("ascii")
+        lines = text.splitlines()
+
+        try:
+            end_idx = lines.index("END")
+        except ValueError as exc:
+            raise AssertionError("Expected ASCII table header to include END.") from exc
+
+        for line in lines[end_idx + 1:]:
+            if line.strip():
+                return line
+
+        raise AssertionError("Expected ASCII table data row in written payload.")
+
     def test_dexp_005_only_d_branch_is_target_scope(self):
         """
         DEXP-005 Scope Restriction:
         Proposed change must be confined to D-format replacement branch.
         """
-        assert True
+        d_output = self._output_field(1.2345e20, "D15.7")
+        e_output = self._output_field(1.2345e20, "E15.7")
+
+        assert b"E" not in d_output
+        assert b"D" in d_output
+        assert d_output == e_output.replace(b"E", b"D")
 
     def test_dexp_005_no_side_effect_path_outside_d_branch(self):
         """
         DEXP-005 No Semantic Side Effects:
         Unrelated non-D formatting behavior remains outside modified scope.
         """
-        assert True
+        e_output = self._output_field(1.2345e20, "E15.7")
+        f_output = self._output_field(1.0, "F15.0")
+
+        assert b"D" not in e_output
+        assert b"E" in e_output
+        assert e_output == b"  1.2345000E+20"
+        assert f_output == b"             1."
 
     def test_dexp_005_no_new_d_exponent_policy(self):
         """
         DEXP-005 D-Exponent Policy Stability:
         No new non-local D-exponent policy is introduced outside targeted branch.
         """
-        assert True
+        hdu = fits.TableHDU.from_columns([
+            fits.Column(name="x", format="D15.7", array=np.array([1.2345e20],
+                                                                dtype=np.float64)),
+            fits.Column(name="y", format="E15.7", array=np.array([1.2345e20],
+                                                                dtype=np.float64)),
+        ])
+        stream = io.BytesIO()
+        hdu.writeto(stream)
+        payload = stream.getvalue()
+        row = self._first_ascii_data_line(payload)
+
+        assert row.count("D") == 1
+        assert row.count("E") == 1
