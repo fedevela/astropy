@@ -239,27 +239,107 @@ def test_AST12907_003_compound_model9_result9_nested_compound_case_remains_stabl
 
 def test_AST12907_004_non_nested_coord_matrix_contract_remains_unchanged():
     """AST12907-004: preserve existing non-nested `test_coord_matrix` behavior."""
-    assert True
+    c = _coord_matrix(p2, 'left', 2)
+    assert_allclose(np.array([[1, 1], [0, 0]]), c)
+    c = _coord_matrix(p2, 'right', 2)
+    assert_allclose(np.array([[0, 0], [1, 1]]), c)
+    c = _coord_matrix(p1, 'left', 2)
+    assert_allclose(np.array([[1], [0]]), c)
+    c = _coord_matrix(p1, 'left', 1)
+    assert_allclose(np.array([[1]]), c)
+    c = _coord_matrix(sh1, 'left', 2)
+    assert_allclose(np.array([[1], [0]]), c)
+    c = _coord_matrix(sh1, 'right', 2)
+    assert_allclose(np.array([[0], [1]]), c)
+    c = _coord_matrix(sh1, 'right', 3)
+    assert_allclose(np.array([[0], [0], [1]]), c)
+    c = _coord_matrix(map3, 'left', 2)
+    assert_allclose(np.array([[1], [1]]), c)
+    c = _coord_matrix(map3, 'left', 3)
+    assert_allclose(np.array([[1], [1], [0]]), c)
 
 
 def test_AST12907_004_non_nested_cdot_contract_remains_unchanged():
     """AST12907-004: preserve existing non-nested `test_cdot` behavior."""
-    assert True
+    result = _cdot(sh1, scl1)
+    assert_allclose(result, np.array([[1]]))
+
+    result = _cdot(rot, p2)
+    assert_allclose(result, np.array([[2, 2]]))
+
+    result = _cdot(rot, rot)
+    assert_allclose(result, np.array([[2, 2], [2, 2]]))
+
+    result = _cdot(Mapping((0, 0)), rot)
+    assert_allclose(result, np.array([[2], [2]]))
+
+    with pytest.raises(ModelDefinitionError,
+                       match=r"Models cannot be combined with the \"|\" operator; .*"):
+        _cdot(sh1, map1)
 
 
 def test_AST12907_004_non_nested_cstack_contract_remains_unchanged():
     """AST12907-004: preserve existing non-nested `test_cstack` behavior."""
-    assert True
+    result = _cstack(sh1, scl1)
+    assert_allclose(result, np.array([[1, 0], [0, 1]]))
+
+    result = _cstack(sh1, rot)
+    assert_allclose(result,
+                    np.array([[1, 0, 0],
+                              [0, 1, 1],
+                              [0, 1, 1]])
+                    )
+    result = _cstack(rot, sh1)
+    assert_allclose(result,
+                    np.array([[1, 1, 0],
+                              [1, 1, 0],
+                              [0, 0, 1]])
+                    )
 
 
 def test_AST12907_004_non_nested_arith_oper_contract_remains_unchanged():
     """AST12907-004: preserve existing non-nested `test_arith_oper` behavior."""
-    assert True
+    # Models as inputs
+    result = _arith_oper(sh1, scl1)
+    assert_allclose(result, np.array([[1]]))
+    result = _arith_oper(rot, rot)
+    assert_allclose(result, np.array([[1, 1], [1, 1]]))
+
+    # ndarray
+    result = _arith_oper(np.array([[1, 2], [3, 4]]), np.array([[1, 2], [3, 4]]))
+    assert_allclose(result, np.array([[1, 1], [1, 1]]))
+
+    # Error
+    with pytest.raises(ModelDefinitionError, match=r"Unsupported operands for arithmetic operator: .*"):
+        _arith_oper(sh1, map1)
 
 
 def test_AST12907_004_non_nested_custom_model_separable_contract_remains_unchanged():
     """AST12907-004: preserve existing non-nested `test_custom_model_separable` behavior."""
-    assert True
+    @custom_model
+    def model_a(x):
+        return x
+
+    assert model_a().separable
+
+    @custom_model
+    def model_c(x, y):
+        return x + y
+
+    assert not model_c().separable
+    assert np.all(separability_matrix(model_c()) == [True, True])
+
+
+AST12907_004_NON_REGRESSED_COMPOUND_CASES = {
+    "AST12907-004:compound_model0-result0": compound_models["cm1"],
+    "AST12907-004:compound_model1-result1": compound_models["cm2"],
+    "AST12907-004:compound_model2-result2": compound_models["cm3"],
+    "AST12907-004:compound_model3-result3": compound_models["cm4"],
+    "AST12907-004:compound_model4-result4": compound_models["cm5"],
+    "AST12907-004:compound_model5-result5": compound_models["cm7"],
+    "AST12907-004:compound_model7-result7": compound_models["cm1"],
+    "AST12907-004:compound_model8-result8": compound_models["cm2"],
+}
 
 
 @pytest.mark.parametrize("obligation", [
@@ -274,7 +354,10 @@ def test_AST12907_004_non_nested_custom_model_separable_contract_remains_unchang
 ])
 def test_AST12907_004_separable_matrix_contract_regression_for_non_regressed_compound_cases(obligation):
     """AST12907-004: preserve previously passing compound model case behavior excluding known corrections."""
-    assert True
+    compound_model, result = AST12907_004_NON_REGRESSED_COMPOUND_CASES[obligation]
+
+    assert_allclose(is_separable(compound_model), result[0])
+    assert_allclose(separability_matrix(compound_model), result[1])
 
 
 # Contract-traceability mapping for traceability audits.
