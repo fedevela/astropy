@@ -1270,6 +1270,14 @@ reduce these to 2 dimensions using the naxis kwarg.
         # M2: all-empty short-circuit is only valid after broadcast normalization when all
         #     required axes are empty.
         # M3: partial-emptiness is not empty-input success; it must preserve mismatch errors.
+        # [GUID: WCSXFORM-006]
+        # Deterministic re-entrancy obligations:
+        # R1: repeated all-empty input on a valid WCS must enter the same empty-output branch
+        #     each call and emit one output container per required axis with zero-length shape.
+        # R2: no observable per-call artifact (cache, flag, mutation) may be set in this helper
+        #     so a subsequent non-empty invocation follows the same non-empty branch and data path.
+        # R3: branch selection is purely a function of current args/origin normalization state and
+        #     does not depend on prior call history.
 
         def _return_list_of_arrays(axes, origin):
             try:
@@ -1288,6 +1296,12 @@ reduce these to 2 dimensions using the naxis kwarg.
                 raise ValueError(
                     "Coordinate arrays are not broadcastable to each other")
 
+            # [GUID: WCSXFORM-006][R1]
+            # Empty-input replayable state-transition:
+            # - PRE: original_sizes captured after axis normalization.
+            # - GUARD: all(axis.size == 0 for axis in axes) true.
+            # - ACTION: construct and return empty outputs with per-axis shape, bypassing func().
+            # - POST: return value shape/content depends only on axis.shape; helper side effects are nil.
             if all(axis.size == 0 for axis in axes):
                 return [np.empty(axis.shape, dtype=float) for axis in axes]
 
@@ -1487,6 +1501,19 @@ reduce these to 2 dimensions using the naxis kwarg.
         #    remains unchanged.
         # 3) empty-input success is only the existing shared helper short-circuit, not a new
         #    branch in this method.
+        # [GUID: WCSXFORM-006]
+        # Sequence-stability obligations:
+        # - R1 call flow:
+        #   1. validate basic WCS setup exists.
+        #   2. delegate to `_array_converter`.
+        #   3. if all required axes are empty, return helper-constructed empty family.
+        #   4. else execute normal wcslib path for transformed outputs.
+        # - R2 transition:
+        #   - after an empty call, next non-empty call must still start from fresh helper state
+        #     and follow step 4 without branch drift.
+        # - R3 equivalence:
+        #   - for fresh-but-equivalent WCS instances, repeated empty/non-empty/empty sequences must
+        #     produce identical contract outcomes, proving no internal state divergence.
         return self._array_converter(
             lambda xy, o: self.wcs.p2s(xy, o)['world'],
             'output', *args, **kwargs)
