@@ -1320,15 +1320,108 @@ def test_MASKHANDLE_001_002_scalar_operand_uses_existing_mask_with_bitwise_or():
 
 
 def test_MASKHANDLE_003_output_mask_remains_none_for_two_unmasked_operands_handle_mask_bitwise_or():
-    assert True
+    data_a = np.array([1.0, 2.0, 3.0])
+    data_b = np.array([4.0, 6.0, 8.0])
+    wcs = WCS(naxis=1)
+
+    for op_name in ["add", "subtract", "multiply", "divide"]:
+        nd_a = NDDataArithmetic(
+            data_a,
+            uncertainty=StdDevUncertainty([0.1, 0.2, 0.3]),
+            wcs=wcs,
+            meta={"tag": "left"},
+        )
+        nd_b = NDDataArithmetic(
+            data_b,
+            uncertainty=StdDevUncertainty([0.5, 0.6, 0.7]),
+            wcs=wcs,
+            meta={"tag": "right"},
+        )
+
+        op = getattr(nd_a, op_name)
+        reference = op(nd_b, handle_mask=np.logical_or, handle_meta="first_found")
+        result = op(nd_b, handle_mask=np.bitwise_or, handle_meta="first_found")
+
+        assert result.mask is None
+        assert_array_equal(result.data, reference.data)
+        assert_array_almost_equal(result.uncertainty.array, reference.uncertainty.array)
+        nd_testing.assert_wcs_seem_equal(reference.wcs, result.wcs)
+        assert result.meta == reference.meta
 
 
 def test_MASKHANDLE_004_output_mask_matches_bitwise_or_for_two_masked_operands():
-    assert True
+    data_a = np.array([1.0, 2.0, 3.0])
+    data_b = np.array([4.0, 6.0, 8.0])
+    wcs = WCS(naxis=1)
+    mask_a = np.array([True, False, True])
+    mask_b = np.array([False, True, False])
+
+    for op_name in ["add", "subtract", "multiply", "divide"]:
+        nd_a = NDDataArithmetic(
+            data_a,
+            mask=mask_a,
+            uncertainty=StdDevUncertainty([0.1, 0.2, 0.3]),
+            wcs=wcs,
+            meta={"tag": "left"},
+        )
+        nd_b = NDDataArithmetic(
+            data_b,
+            mask=mask_b,
+            uncertainty=StdDevUncertainty([0.5, 0.6, 0.7]),
+            wcs=wcs,
+            meta={"tag": "right"},
+        )
+
+        op = getattr(nd_a, op_name)
+        reference = op(nd_b, handle_mask=np.logical_or, handle_meta="first_found")
+        result = op(nd_b, handle_mask=np.bitwise_or, handle_meta="first_found")
+
+        assert_array_equal(result.mask, np.bitwise_or(mask_a, mask_b))
+        assert_array_equal(result.data, reference.data)
+        assert_array_almost_equal(result.uncertainty.array, reference.uncertainty.array)
+        nd_testing.assert_wcs_seem_equal(reference.wcs, result.wcs)
+        assert result.meta == reference.meta
 
 
 def test_MASKHANDLE_005_no_change_outside_mixed_mask_branch_for_handle_mask_bitwise_or():
-    assert True
+    data_a = np.array([1.0, 2.0, 3.0])
+    data_b = np.array([4.0, 6.0, 8.0])
+    wcs = WCS(naxis=1)
+
+    for op_name in ["add", "subtract", "multiply", "divide"]:
+        for masked in [False, True]:
+            mask_a = np.array([True, False, True]) if masked else None
+            mask_b = np.array([False, True, False]) if masked else None
+            nd_a = NDDataArithmetic(
+                data_a,
+                mask=mask_a,
+                uncertainty=StdDevUncertainty([0.1, 0.2, 0.3]),
+                wcs=wcs,
+                meta={"tag": "left"},
+            )
+            nd_b = NDDataArithmetic(
+                data_b,
+                mask=mask_b,
+                uncertainty=StdDevUncertainty([0.5, 0.6, 0.7]),
+                wcs=wcs,
+                meta={"tag": "left"},
+            )
+
+            op = getattr(nd_a, op_name)
+            baseline = op(nd_b, handle_mask=np.logical_or, handle_meta="first_found")
+            target = op(nd_b, handle_mask=np.bitwise_or, handle_meta="first_found")
+
+            assert_array_equal(target.data, baseline.data)
+            assert_array_almost_equal(
+                target.uncertainty.array, baseline.uncertainty.array
+            )
+            nd_testing.assert_wcs_seem_equal(target.wcs, baseline.wcs)
+            assert target.meta == baseline.meta
+
+            if masked:
+                assert_array_equal(target.mask, np.bitwise_or(mask_a, mask_b))
+            else:
+                assert target.mask is None
 
 
 @pytest.mark.parametrize("meth", ["add", "subtract", "divide", "multiply"])
