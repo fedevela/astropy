@@ -23,6 +23,16 @@ from .mappings import Mapping
 
 __all__ = ["is_separable", "separability_matrix"]
 
+# AST12907-005 requirement-to-logic locus:
+# - AST12907-005.S1: nested compound input must always produce a 2D boolean matrix.
+# - AST12907-005.S2: returned matrix must be shaped exactly (n_outputs, n_inputs).
+# - AST12907-005.S3: output/input index ordering must remain stable across
+#   equivalent nested vs flattened compound model forms.
+# Traceability:
+# - test_AST12907_005_nested_compound_matrix_is_2d_boolean
+# - test_AST12907_005_nested_compound_matrix_shape_matches_output_input_counts
+# - test_AST12907_005_nested_vs_flattened_ordering_stable_by_output_input_indices
+
 # AST12907-004 requirement traceability (pseudocode obligation locus)
 # - Preserve non-nested behavior for: test_coord_matrix, test_cdot, test_cstack,
 #   test_arith_oper, test_custom_model_separable, and compound_model0-result0,
@@ -115,17 +125,23 @@ def separability_matrix(transform):
         array([[ True, False], [False,  True], [ True, False], [False,  True]]...)
 
     """
-    # AST12907-004.S1: preserve legacy one-to-many matrix contract.
+    # AST12907-005.S1/S2 (contract enforcement locus):
     # INPUTS:
-    # - transform.n_inputs, transform.n_outputs
+    # - transform: Model/CompoundModel under inspection
+    # - expected contract envelope = (transform.n_outputs, transform.n_inputs)
     # DECISION:
-    # - IF n_inputs == 1 and n_outputs > 1:
-    #   - return ones((n_outputs, n_inputs), dtype=bool)
+    # - IF transform.n_inputs == 1 and transform.n_outputs > 1:
+    #   - raw_matrix <- ones((n_outputs, n_inputs), dtype=bool)
     # - ELSE:
-    #   - separable_matrix <- _separable(transform)
-    #   - normalize any non-zero element to True
+    #   - raw_matrix <- _separable(transform)
+    #   - normalize each cell to boolean via (raw_matrix != 0)
+    # POST-CONDITIONS:
+    # - output_matrix.ndim == 2
+    # - output_matrix.shape == (transform.n_outputs, transform.n_inputs)
+    # - output_matrix.dtype == bool
+    # - all truth values are stable with respect to transform.n_outputs/n_inputs axes.
     # FAILURE/EXCEPTIONS:
-    # - no local recovery; caller-visible exceptions propagate
+    # - preserve current behavior; no local conversion exceptions or recovery.
     if transform.n_inputs == 1 and transform.n_outputs > 1:
         return np.ones((transform.n_outputs, transform.n_inputs),
                        dtype=np.bool_)
@@ -168,11 +184,11 @@ def _flatten_ampersand_chain(transform):
     transform : `astropy.modeling.Model`
         A model or compound model.
     """
-    # AST12907-002 (flattened & chain equivalence):
+    # AST12907-002 / AST12907-005.S3:
     # Inputs:
     # - transform: a model tree possibly containing '&' compounds.
     # Output:
-    # - operands: leaf nodes visited in left-to-right order.
+    # - operands: leaf nodes visited in left-to-right, depth-first order.
     # Branching and transitions:
     # - start with stack = [transform].
     # - while stack not empty:
@@ -208,6 +224,14 @@ def _to_coord_operand(operand, pos, noutp):
     noutp : int
         Total outputs of the composed '&' block.
     """
+    # AST12907-005.S3:
+    # - For leaf Model: delegate to _coord_matrix so per-operand output/input
+    #   axes remain canonical.
+    # - For ndarray block:
+    #   - IF pos == 'left': place block in leading rows/cols.
+    #   - IF pos == 'right': place block in trailing rows/cols.
+    # This preserves stable column and row indices in '&' composition regardless
+    # of nested tree shape.
     if isinstance(operand, Model):
         return _coord_matrix(operand, pos, noutp)
 
@@ -296,6 +320,10 @@ def _coord_matrix(model, pos, noutp):
     #     - emit diagonal-like local dependency rows, then roll right-position rows if needed.
     # OUTPUT:
     # - matrix dimensions and placement are unchanged from prior logic.
+    # AST12907-005.S2/S3:
+    # - Contract requires matrix dimensions always align to (noutp, model.n_inputs).
+    # - For non-right positions, write block into the leading input/output span;
+    #   for right positions, shift rows to trailing output span.
     if isinstance(model, Mapping):
         axes = []
         for i in model.mapping:
@@ -342,7 +370,7 @@ def _cstack(left, right):
         Result from this operation.
 
     """
-    # AST12907-004.S4: preserve non-nested "&" block composition behavior.
+    # AST12907-004.S4 / AST12907-005.S2/S3:
     # DECISION:
     # - noutp <- _compute_n_outputs(left, right)
     # - cleft <- _to_coord_operand(left, 'left', noutp)
@@ -380,7 +408,7 @@ def _cdot(left, right):
         Result from this operation.
     """
 
-    # AST12907-004.S3: preserve non-nested "|" semantics for operand composition.
+    # AST12907-004.S3 / AST12907-005.S2/S3:
     # DECISION:
     # - swap(left, right) assignment is canonical for this operator.
     # - convert each operand into coord-matrix form if needed.
@@ -428,10 +456,21 @@ def _separable(transform):
         An array of shape (transform.n_outputs,) of boolean type
         Each element represents the separablity of the corresponding output.
     """
-    # AST12907-004.S6/S7: preserve non-regressed compound traversal semantics.
+    # AST12907-004.S6/S7 / AST12907-005.S2/S3:
     # - non-regressed fixtures keep existing branching for operator-specific composition.
     # - only '&' nested-chain normalization is allowed to alter traversal form.
     # - nested '&' behavior changed only for AST12907-003-covered cases.
+    # AST12907-005-specific mapping:
+    # - S2 exact shape contract:
+    #   - If custom hook returns a matrix, it is treated as full matrix for this
+    #     transform and must already represent (n_outputs, n_inputs).
+    #   - All operator combinators consume and emit matrix-shaped by rows=outputs,
+    #     cols=inputs, so the same dimensional contract is preserved.
+    # - S3 ordering stability:
+    #   - Nested '&' is flattened to an operand list in deterministic order.
+    #   - matrix accumulation folds operands left-to-right with _operators['&'].
+    #   - no branch reorders operands, so resulting row/column labels stay
+    #     aligned to output/input order semantics of the equivalent flattened form.
     if (transform_matrix := transform._calculate_separability_matrix()) is not NotImplemented:
         return transform_matrix
     elif isinstance(transform, CompoundModel):
