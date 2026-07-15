@@ -136,6 +136,18 @@ def _flatten_ampersand_chain(transform):
     transform : `astropy.modeling.Model`
         A model or compound model.
     """
+    # AST12907-002 (flattened & chain equivalence):
+    # Inputs:
+    # - transform: a model tree possibly containing '&' compounds.
+    # Output:
+    # - operands: leaf nodes visited in left-to-right order.
+    # Branching and transitions:
+    # - start with stack = [transform].
+    # - while stack not empty:
+    #   - pop(node); if node is '&', push right then left (preserves left-to-right append).
+    #   - otherwise append node as a leaf operand.
+    # Invariant:
+    # - flattening captures associativity-only rewrites without creating new coupling.
     operands = []
     stack = [transform]
     while stack:
@@ -276,6 +288,15 @@ def _cstack(left, right):
         Result from this operation.
 
     """
+    # AST12907-002: '&' transition must append independent coordinate block.
+    # Step:
+    # 1) noutp <- left.n_outputs + right.n_outputs
+    # 2) cleft <- normalize left operand into rows [0:nleft) and its own input span.
+    # 3) cright <- normalize right operand into rows [-nright:] and trailing input span.
+    # 4) return np.hstack([cleft, cright]).
+    # Property:
+    # - existing left-block dependencies never write into right-block columns and
+    #   right-block independence is not coupled into left columns.
     noutp = _compute_n_outputs(left, right)
     cleft = _to_coord_operand(left, 'left', noutp)
     cright = _to_coord_operand(right, 'right', noutp)
@@ -339,6 +360,17 @@ def _separable(transform):
         return transform_matrix
     elif isinstance(transform, CompoundModel):
         if transform.op == '&':
+            # AST12907-002.S1/S2: nested '&' must preserve independent right-hand linear block.
+            # Control flow:
+            # - flatten nested '&' nodes into ordered operands.
+            # - initialize state = separable matrix of first operand.
+            # - fold remaining operands with _operators['&'] in order.
+            # Failure safety:
+            # - if any operand raises ModelDefinitionError downstream, propagation remains unchanged.
+            # Required post-condition:
+            # - matrix entries (2,3) and (3,2) stay False for
+            #   m.Pix2Sky_TAN() & (m.Linear1D(10) & m.Linear1D(5));
+            # - flattened and nested forms must remain matrix-equal.
             operands = _flatten_ampersand_chain(transform)
             separable_matrix = _separable(operands[0])
             for operand in operands[1:]:
