@@ -6,6 +6,10 @@ axis is non-empty and another is empty, ensuring validation errors remain the
 governing path and are not replaced by empty-input short-circuit behavior.
 """
 
+import numpy as np
+
+import pytest
+
 from ... import wcs
 
 
@@ -26,12 +30,11 @@ def test_wcs_004_mixed_non_empty_and_empty_axes_keep_non_empty_validation_errors
     """WCS-004: mixed input where one axis is empty preserves validation failure."""
     w = _create_two_axis_wcs()
 
-    try:
+    with pytest.raises(ValueError) as exc:
         w.wcs_pix2world([10.0], [], 0)
-    except Exception:
-        pass
-
-    assert True
+    assert exc.value.args[0] == (
+        "Coordinate arrays are not broadcastable to each other"
+    )
 
 
 def test_wcs_004_repeated_invalid_mixed_calls_continue_failing_without_empty_short_circuit():
@@ -39,23 +42,23 @@ def test_wcs_004_repeated_invalid_mixed_calls_continue_failing_without_empty_sho
     w = _create_two_axis_wcs()
 
     for _ in range(2):
-        try:
+        with pytest.raises(ValueError) as exc:
             w.wcs_pix2world([10.0, 20.0], [], 1)
-        except Exception:
-            pass
-
-    assert True
+        assert exc.value.args[0] == (
+            "Coordinate arrays are not broadcastable to each other"
+        )
 
 
 def test_wcs_004_valid_all_empty_call_after_invalid_mixed_input_uses_noop_empty_path():
     """WCS-004: valid all-empty call remains a no-op path after invalid mixed input."""
     w = _create_two_axis_wcs()
 
-    try:
+    with pytest.raises(ValueError):
         w.wcs_pix2world([10.0], [], 0)
-    except Exception:
-        pass
 
-    w.wcs_pix2world([], [], 0)
+    x_world, y_world = w.wcs_pix2world([], [], 0)
 
-    assert True
+    assert x_world.shape == (0,)
+    assert y_world.shape == (0,)
+    assert np.array_equal(x_world, np.array([]))
+    assert np.array_equal(y_world, np.array([]))

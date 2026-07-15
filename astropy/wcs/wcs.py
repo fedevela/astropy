@@ -1252,13 +1252,16 @@ reduce these to 2 dimensions using the naxis kwarg.
             #        - do not prepend synthetic rows/coordinates;
             #        - return `[np.empty(axes[0].shape) for _ in range(self.naxis)]`;
             #        - skip all wcslib calls.
+            input_axes_are_empty = all(axis.size == 0 for axis in axes)
+            has_non_empty_axes = any(axis.size > 0 for axis in axes)
+
             try:
                 axes = np.broadcast_arrays(*axes)
             except ValueError:
                 raise ValueError(
                     "Coordinate arrays are not broadcastable to each other")
 
-            if sky == 'output' and all(axis.size == 0 for axis in axes):
+            if sky == 'output' and input_axes_are_empty and not has_non_empty_axes:
                 empty_axes = [np.empty(axes[0].shape, dtype=float)
                               for _ in range(self.naxis)]
                 if input_container_mode == "list":
