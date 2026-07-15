@@ -4,6 +4,15 @@
 
 """Architecture-focused traceability artifact for DEXP-004."""
 
+import io
+
+import numpy as np
+
+from ....io import fits
+from ..header import _pad_length
+
+from . import FitsTestCase
+
 
 DEXP_004_VERIFICATION = {
     "DEXP-004": [
@@ -151,26 +160,90 @@ DEXP_004_ARCHITECTURE_PLACEMENT = [
 ]
 
 
-class TestDEXP004Traceability:
+class TestDEXP004Traceability(FitsTestCase):
     """Phase-5 verification placeholders for DEXP-004 traceability."""
+
+    @staticmethod
+    def _table_payload(hdu):
+        # Build a byte-level payload for a deterministic row-by-row semantic check.
+        stream = io.BytesIO()
+        hdu.writeto(stream)
+        stream.seek(0)
+        return stream.getvalue()
+
+    @staticmethod
+    def _first_ascii_data_line(payload):
+        # Parse the first non-empty ASCII row following the header END marker.
+        text = payload.decode("ascii")
+        lines = text.splitlines()
+
+        try:
+            end_idx = lines.index("END")
+        except ValueError as exc:
+            raise AssertionError("Expected ASCII table header to include END.") from exc
+
+        for line in lines[end_idx + 1:]:
+            if line.strip():
+                return line
+
+        raise AssertionError("Expected ASCII table data row in written payload.")
+
+    @staticmethod
+    def _non_d_output_field(value, format_spec):
+        # Execute the non-D formatting branch directly.
+        values = np.array([value], dtype=np.float64)
+        column = fits.Column(name="x", format=format_spec, array=values)
+        hdu = fits.TableHDU.from_columns([column])
+        output_field = hdu.data["x"].copy()
+        hdu.data._scale_back_ascii(0, values, output_field)
+        return output_field[0]
 
     def test_dexp_004_non_d_format_no_d_substitution_or_state_change(self):
         """
         DEXP-004: non-D format does not execute D substitution branch and output
         exponent marker semantics remain unchanged.
         """
-        assert True
+        output = self._non_d_output_field(1.2345e20, "E15.7")
+        assert b"D" not in output
+        assert b"E" in output
+        assert output == b"  1.2345000E+20"
 
     def test_dexp_004_non_d_width_padding_sign_semantics_stable(self):
         """
         DEXP-004: baseline non-D width, padding, and sign output are preserved after
         the D-branch logic change.
         """
-        assert True
+        output_positive = self._non_d_output_field(1.2345e20, "E15.7")
+        output_negative = self._non_d_output_field(-1.2345e20, "E15.7")
+        output_zero_prec = self._non_d_output_field(1.0, "F15.0")
+
+        assert output_positive == b"  1.2345000E+20"
+        assert output_negative == b" -1.2345000E+20"
+        assert output_zero_prec == b"             1."
 
     def test_dexp_004_non_d_checksum_outcomes_stable(self):
         """
         DEXP-004: non-D fields feeding checksum calculation preserve identical checksum
         outcomes.
         """
-        assert True
+        hdu = fits.TableHDU.from_columns([
+            fits.Column(name="x", format="E15.7", array=np.array([1.2345e20], dtype=np.float64))
+        ])
+        hdu.data._scale_back()
+        expected = bytes(hdu.data.view(np.ubyte)) + b" " * _pad_length(hdu.data.nbytes)
+
+        observed = {}
+        original_compute_checksum = hdu._compute_checksum
+
+        def capture_compute_checksum(data, sum32=0):
+            observed["data_bytes"] = bytes(data)
+            observed["data_sum"] = original_compute_checksum(data, sum32)
+            return observed["data_sum"]
+
+        hdu._compute_checksum = capture_compute_checksum.__get__(hdu, type(hdu))
+        hdu.writeto(io.BytesIO(), checksum="datasum")
+
+        assert observed["data_bytes"] == expected
+        assert b"D" not in observed["data_bytes"]
+        assert b"E" in observed["data_bytes"]
+        assert int(hdu.header["DATASUM"]) == observed["data_sum"]
