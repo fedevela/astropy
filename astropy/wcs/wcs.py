@@ -1225,6 +1225,21 @@ reduce these to 2 dimensions using the naxis kwarg.
             #    - In the empty state, do not call wcslib (`func`) or sky-normalization
             #      branches because those can emit InconsistentAxisTypesError.
             #    - In non-empty state, continue through existing broadcast and transform.
+            # WCS-002: deterministic multi-axis empty-input behavior.
+            # 2.1) Obligation 1 (3-axis tuple): accept 3-tuples of empty inputs as
+            #      axis-segment inputs, broadcast-compatible with shape ()/shape (0,),
+            #      and return exactly 3 output arrays.
+            # 2.2) Obligation 2 (N-axis tuple): for N axes and all N inputs empty,
+            #      emit exactly N output arrays, each with empty payload and broadcasted
+            #      per-axis input shape.
+            # 2.3) Obligation 3 (origin-stable cardinality): do not branch on origin
+            #      after the empty-tuple branch fires; output cardinality is solely
+            #      `self.naxis` and therefore fixed for repeated calls across origin.
+            # 2.4) Transition detail:
+            #      If `sky == 'output'` and `all(axis.size == 0 for axis in axes)`:
+            #        - do not prepend synthetic rows/coordinates;
+            #        - return `[np.empty(axes[0].shape) for _ in range(self.naxis)]`;
+            #        - skip all wcslib calls.
             try:
                 axes = np.broadcast_arrays(*axes)
             except ValueError:
@@ -1282,6 +1297,8 @@ reduce these to 2 dimensions using the naxis kwarg.
             return _return_single_array(xy, origin)
 
         elif len(args) == self.naxis + 1:
+            # WCS-002: N-axis tuple call form (`arg1, arg2, ... , argN, origin`) is the
+            # primary locus for multi-axis empty-input obligations.
             axes = args[:-1]
             origin = args[-1]
             try:
