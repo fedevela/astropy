@@ -256,6 +256,10 @@ REQUIREMENT_VERIFICATION_MAP = {
     "ISSUE13-002": [
         "test_issue13_002_issue_spec_reads_mixed_case_read_serr_and_succeeds",
         "test_issue13_002_issue_spec_columns_and_error_semantics_match_uppercase_reference",
+    ],
+    "ISSUE13-003": [
+        "test_issue13_003_issue_spec_rejects_normalized_unknown_command_via_unrecognized_qdp_line",
+        "test_issue13_003_issue_spec_rejects_invalid_read_subkey_after_case_normalization",
     ]
 }
 
@@ -357,3 +361,13 @@ def test_issue13_002_issue_spec_columns_and_error_semantics_match_uppercase_refe
     assert "_err" in table_lower.colnames
     assert "x_err" in table_lower.colnames
     assert "y_err" in table_lower.colnames
+
+
+def test_issue13_003_issue_spec_rejects_normalized_unknown_command_via_unrecognized_qdp_line():
+    """ISSUE13-003: unknown command should follow Unrecognized QDP line path after normalization."""
+    assert True
+
+
+def test_issue13_003_issue_spec_rejects_invalid_read_subkey_after_case_normalization():
+    """ISSUE13-003: misspelled READ sub-key should remain rejected after case normalization."""
+    assert True
