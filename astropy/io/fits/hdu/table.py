@@ -525,6 +525,17 @@ class _TableBaseHDU(ExtensionHDU, _TableLikeHDU):
             #   must read from the same `self.data` bytes later.
             # - HANDOFF: do not route downstream serialization/checksum through
             #   a short-lived local representation of a single field.
+            # DEXP-004 stability gate:
+            # - IF active path is a non-D serialization branch:
+            #   - no exponent replacement branch executes in that column path
+            #   - staged byte payload remains exactly as produced by formatting
+            # - IF active path is D-format serialization:
+            #   - only exponent separator rewrite from 'E' to 'D' is allowed
+            #     in `_scale_back_ascii`
+            #   - all other non-D semantics are unchanged
+            # - FAILURE PATH:
+            #   - if non-D staged bytes differ between write/checksum consumers,
+            #     width/padding/sign and checksum stability obligations fail.
             # check TFIELDS and NAXIS2
             self._header['TFIELDS'] = len(self.data._coldefs)
             self._header['NAXIS2'] = self.data.shape[0]
@@ -802,6 +813,14 @@ class TableHDU(_TableBaseHDU):
             # CONTRACT: bytes_array is expected to include the serialized field
             # bytes after _scale_back_ascii conversion (including D-exponent
             # replacement for D-format fields).
+            # DEXP-004 checksum-stability contract:
+            # - IF DEXP-004 non-D scenario:
+            #   - checksum input is `self.data` bytes with no D-style rewrite
+            #   - padding and bytestring topology remain unchanged.
+            # - IF D formats appear:
+            #   - checksum observes only those D-local replaced bytes.
+            # - SUCCESSIVE consumers (writer and checksum) must see the same
+            #   in-memory payload bytes.
             # We have the data to be used.
             # We need to pad the data to a block length before calculating
             # the datasum.
@@ -952,6 +971,13 @@ class BinTableHDU(_TableBaseHDU):
                 # contain post-conversion serialized bytes. For D-formats this
                 # means exponent separators are 'D'.
                 # DO NOT switch to a detached per-field temporary as output source.
+                # DEXP-004 write-path invariant:
+                # - Source-of-truth payload is the staged `data` array handed off
+                #   from prewriteto scaling.
+                # - DO NOT perform any additional per-field text-format mutation
+                #   in this stage.
+                # - contract with checksum remains source-equivalent bytes
+                #   (read later via _calculate_datasum).
                 fileobj.writearray(data)
                 # write out the heap of variable length array columns this has
                 # to be done after the "regular" data is written (above)

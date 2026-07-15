@@ -1271,6 +1271,11 @@ class FITS_rec(np.recarray):
             output_field[jdx] = value
 
         # Replace exponent separator in floating point numbers
+        # DEXP-004 width/padding/sign invariants:
+        # - `fmt` and `fmt.format` define width/alignment/sign semantics.
+        # - Non-D formats must bypass any post-format token replacement.
+        # - No non-D path may modify trailing blanks, explicit/implicit signs,
+        #   or decimal placement before checksum/write handoff.
         if 'D' in format:
             # DEXP-002 logic gate:
             # IF format.format includes 'D':
@@ -1309,8 +1314,13 @@ class FITS_rec(np.recarray):
             #                                  encode_ascii('D'))
             #   output_field[...] = replaced
             #   (Downstream writer reads updated `output_field`.)
-            # ELSE:
-            #   pass
+            # ELSE (DEXP-004):
+            #   # non-D stability path:
+            #   no substitution executed
+            #   output bytes remain formatter output from `fmt.format`
+            #   width/padding/sign remain unchanged
+            #   output bytes proceed unchanged to `_TableBaseHDU._prewriteto`
+            #     and checksum consumers.
             #
             # FAILURE PATH:
             #   If no 'E' exponent bytes are present, assignment is a no-op.
@@ -1318,6 +1328,16 @@ class FITS_rec(np.recarray):
             #   raised before reaching this branch.
             output_field[:] = output_field.replace(encode_ascii('E'),
                                                   encode_ascii('D'))
+        else:
+            # DEXP-004 requirement-to-logic mapping:
+            # - test_dexp_004_non_d_format_no_d_substitution_or_state_change
+            #   => non-D format must remain in this branch and execute no
+            #      replacement.
+            # - test_dexp_004_non_d_width_padding_sign_semantics_stable
+            #   => spacing, width, and sign are preserved from `fmt.format`.
+            # - test_dexp_004_non_d_checksum_outcomes_stable
+            #   => byte stream for non-D formats remains stable prior to checksum.
+            pass
 
 
 
