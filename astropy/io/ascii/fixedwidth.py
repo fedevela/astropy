@@ -261,7 +261,7 @@ class FixedWidthData(basic.BasicData):
     def write(self, lines):
         default_header_rows = [] if self.header.start_line is None else ["name"]
         header_rows = getattr(self, "header_rows", default_header_rows)
-        # ASTRST-002 / ASTRST-005 logic:
+        # ASTRST-002 / ASTRST-004 / ASTRST-005 logic:
         # INPUT: ordered `self.cols` plus configured `header_rows` token list.
         # OUTPUT GOAL:
         #   - one final width vector reused by every emitted row.
@@ -358,6 +358,16 @@ class FixedWidth(basic.Basic):
         bookend=True,
         header_rows=None,
     ):
+        # ASTRST-003 logic:
+        # INPUT: `header_rows` keyword from writer construction.
+        # BRANCH:
+        #   - header_rows is None -> normalize to ["name"] to preserve default single header
+        #     behavior in existing ascii.rst output.
+        #   - header_rows explicit list -> preserve order and count exactly as provided.
+        # OUTPUT:
+        #   - propagate same normalized header_rows to both data and header components.
+        #   - set data.start_line to len(header_rows) only when header start line is unset.
+        # GUARANTEE: default topology for no header_rows remains unchanged by contract.
         if header_rows is None:
             header_rows = ["name"]
         super().__init__()

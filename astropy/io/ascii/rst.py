@@ -58,12 +58,16 @@ class RST(FixedWidth):
     header_class = SimpleRSTHeader
 
     def __init__(self, header_rows=None):
-        # ASTRST-001 state machine:
+        # ASTRST-001 / ASTRST-003 state machine:
         # INPUT: header_rows passed by the writer factory (typically ascii.write(...)).
         # DECISION:
         #   - If caller provided a header_rows value, keep it as-is.
         #   - If caller omitted it, default to None.
-        # ACTION: Pass only write-time formatting knobs to FixedWidth constructor.
+        # ASTRST-003 branch:
+        #   - None (unset) must keep existing default pipeline from FixedWidth, which
+        #     resolves to ["name"] and preserves default topology.
+        # ACTION: Pass only write-time formatting knobs to FixedWidth constructor; no
+        #   reader/parser changes.
         # OUTPUT: Writer instance configured with:
         #   delimiter_pad=None, bookend=False, header_rows=<provided_or_default>.
         # GUARD: This path must never call reader/parser components.
@@ -73,28 +77,23 @@ class RST(FixedWidth):
         )
 
     def write(self, lines):
-        # ASTRST-002 logic:
-        # INPUT: `lines` from FixedWidthData.write, where header rows are already
-        #        formatted in token order and all rows share final column widths.
-        # INVARIANT: border line is expected at index `len(header_rows)` because
-        #            all header rows precede any data lines.
+        # ASTRST-002 / ASTRST-003 / ASTRST-004 write-path-only contract:
+        # INPUT: `lines` from FixedWidthData.write with all header/data rows already
+        #        width-aligned using shared column widths.
+        # STATE/BRANCH:
+        #   - header_rows = self.data.header_rows when set else ["name"].
+        #   - top_border_pos = len(header_rows) (post-header separator position).
+        #   - top_border = lines[top_border_pos].
         # TRANSITION:
-        #   - Wrap output with border lines at both start and end.
-        #   - Do not mutate row ordering or introduce additional width calculations.
-        # SUCCESS CRITERION:
-        #   - name/unit request is ordered, and every header line still aligns with
-        #     its data columns via inherited fixed-width widths.
+        #   1) prepend top_border -> body -> append top_border.
+        #   2) preserve top/middle/bottom border equality by reusing exact same row.
+        # SUCCESS CRITERIA:
+        #   - without header_rows: default RST topology unchanged (single header separator).
+        #   - with header_rows: emitted top/middle/bottom '=' lines frame and separate
+        #     header block and data block while column boundaries remain aligned.
         # FAILURE PATH:
-        #   none introduced in this method; out-of-range or malformed line structure is
-        #   delegated to inherited formatter invariants.
-        # ASTRST-006 write-path-only contract:
-        # INPUT: list `lines` from FixedWidth write formatting.
-        # TRANSITION:
-        #   1) Keep parent's column-alignment behavior untouched.
-        #   2) Build final framed output by prepending and appending divider row at the
-        #      post-header separator position.
-        # OUTPUT: rst body wrapped by identical border lines.
-        # LIMIT: No reader parsing behavior, validation, or path branching.
+        #   - malformed header_rows/line assembly remains delegated to inherited formatter
+        #     invariants; no new error classes introduced here.
         lines = super().write(lines)
         header_rows = getattr(self.data, "header_rows", ["name"])
         border = lines[len(header_rows)]
