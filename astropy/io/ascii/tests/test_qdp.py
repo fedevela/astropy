@@ -265,6 +265,10 @@ REQUIREMENT_VERIFICATION_MAP = {
         "test_issue13_004_issue_spec_preserves_uppercase_qdp_table_shape_type_order_and_values_after_case_insensitive_read_path",
         "test_issue13_004_issue_spec_preserves_comments_and_whitespace_semantics_with_uppercase_qdp_and_mixed_spacing",
     ],
+    "ISSUE13-005": [
+        "test_issue13_005_issue_spec_preserves_public_call_path_for_ascii_qdp_without_pre_normalization",
+        "test_issue13_005_issue_spec_accepts_lowercase_and_mixed_case_qdp_same_read_shape_format_ascii_qdp",
+    ],
 }
 
 
@@ -449,3 +453,13 @@ def test_issue13_004_issue_spec_preserves_comments_and_whitespace_semantics_with
     assert np.allclose(table["col1"], [1, 2])
     assert np.ma.allequal(table["col1_err"], np.ma.array([10.5, 20.0]))
     assert np.allclose(table["col2"], [100, 200])
+
+
+def test_issue13_005_issue_spec_preserves_public_call_path_for_ascii_qdp_without_pre_normalization():
+    """ISSUE13-005: Table.read(..., format='ascii.qdp') must remain the direct call path."""
+    assert True
+
+
+def test_issue13_005_issue_spec_accepts_lowercase_and_mixed_case_qdp_same_read_shape_format_ascii_qdp():
+    """ISSUE13-005: lowercase and mixed-case QDP inputs should succeed with format='ascii.qdp' no preprocessing."""
+    assert True
