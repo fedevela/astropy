@@ -74,8 +74,13 @@ def _line_type(line, delimiter=None):
         return "comment"
     match = re.match(_type_re, line)
 
-    # Command matching is case-insensitive, but non-command numeric/comment tokens
-    # remain governed by the existing grammar.
+    # ISSUE13-005: public-call-path obligation.
+    # 1) Maintain current upstream call contract: `_line_type` receives raw input
+    #    from `Table.read(..., format='ascii.qdp')` or `QDP.read` directly.
+    # 2) Keep numeric/comment recognition on the strict grammar path; do not
+    #    accept lowercase/mixed-case by coercing non-command token semantics.
+    # 3) For command-only fallback, permit command-token case-insensitivity
+    #    locally without introducing any caller-side normalization.
     if match is None:
         ci_command_re = re.compile(rf"^\s*{_command_re}\s*$", flags=re.IGNORECASE)
         if ci_command_re.match(line):
@@ -96,6 +101,10 @@ def _line_type(line, delimiter=None):
         if type_ == "data":
             return f"data,{len(val.split(sep=delimiter))}"
         if type_ == "command":
+            # ISSUE13-005: command dispatch obligation.
+            # - tokenize on whitespace from raw line (no pre-normalization).
+            # - keep VERB case-insensitive via upper() only for acceptance check.
+            # - persist sub-key canonicalization only through lower(), then gate to serr/terr.
             command = line.split()
             if len(command) < 3:
                 raise ValueError(f"Unrecognized QDP line: {line}")
@@ -298,6 +307,9 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
     current_rows = None
 
     # ISSUE13-004: logic obligation.
+    # ISSUE13-005: public-call-path obligation.
+    # - no pre-normalization exists before parser entry; `read` enters here with
+    #   user-supplied casing intact.
     # - FSM states: `initial_comments` (before first table data),
     #   `current_rows` (active rows), `command_lines` (command block), `comment_text`
     #   (table-local comments), `err_specs` (parsed command offsets), `colnames` (schema).
@@ -331,6 +343,9 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
             # ISSUE13-002: pseudocode branch:
             # - store command lines as read, without transforming case.
             # - preserve comment handoff and existing multiple-command warning.
+            # ISSUE13-005:
+            # - preserve full raw command line text and whitespace shape.
+            # - do not mutate line content before later `command_key` normalization.
             # The first time I find commands, I save whatever comments into
             # The initial comments.
             if command_lines == "":
@@ -362,6 +377,10 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
                 # - because line-level recognition is strict, this branch should never
                 #   materialize an unrecognized command key; if it did, behavior must
                 #   remain reject/ignore rather than coercing to serr/terr.
+                # ISSUE13-005:
+                # - accept lower/mixed-case commands by canonicalizing `command[1]`
+                #   only; preserve `command[0]` and `command[2:]` as-is for the
+                #   acceptance semantics that already exist in this branch.
                 for cline in command_lines.strip().split("\n"):
                     command = cline.strip().split()
 
@@ -497,6 +516,12 @@ def _read_table_qdp(qdp_file, names=None, table_id=None, delimiter=None):
         )
         table_id = 0
 
+    # ISSUE13-005: interface-preservation branch.
+    # - call entry is fixed: this function is always reached via the public
+    #   `Table.read(..., format='ascii.qdp')` path (or `QDP.read`) with no
+    #   pre-normalization shim.
+    # - delegate directly to `_get_tables_from_qdp_file`; no case-normalized or
+    #   alternate reader branch is introduced.
     tables = _get_tables_from_qdp_file(
         qdp_file, input_colnames=names, delimiter=delimiter
     )
@@ -716,6 +741,9 @@ class QDP(basic.Basic):
         self.delimiter = sep
 
     def read(self, table):
+        # ISSUE13-005: API-entry invariant.
+        # - The public QDP format call path is fixed (`ascii.qdp` route), so this
+        #   method continues to hand raw lines straight to `_read_table_qdp`.
         self.lines = self.inputter.get_lines(table, newline="\n")
         return _read_table_qdp(
             self.lines,
