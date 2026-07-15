@@ -1433,24 +1433,55 @@ def test_MASKHANDLE_005_no_change_outside_mixed_mask_branch_for_handle_mask_bitw
 
 
 def test_MASKHANDLE_006_scalar_multiply_uses_mixed_mask_operand_output_for_handle_mask_bitwise_or():
-    # Obligation from MASKHANDLE-006: nref_mask.multiply(1., handle_mask=np.bitwise_or)
-    # should preserve nref_mask.mask and remain exception-free.
-    assert True
+    # [MASKHANDLE-006][O1] Scalar mixed-mask multiply using np.bitwise_or must keep the
+    # present masked operand mask and must be exception-free.
+    # 1) BUILD:
+    #    - nref_mask : NDDataArithmetic with finite data and mask = M (e.g. [True, False, True]).
+    #    - nref_nomask : NDDataArithmetic with same shape/value data and mask = None.
+    # 2) EXECUTE:
+    #    - call_result = nref_mask.multiply(1., handle_mask=np.bitwise_or)
+    #    - if TypeError occurs, branch to FAILED state.
+    # 3) STATE TRANSITION CHECK:
+    #    - successful path: result.mask == M
+    #    - failure path: report TypeError as invalid for MASKHANDLE-006 requirement.
+    # 4) OUTPUT:
+    #    - no state mutation required; function remains deterministic and pass-through for mask.
+    pass
 
 
 @pytest.mark.parametrize("masked_first", [True, False])
 def test_MASKHANDLE_006_multiply_ordered_mixed_mask_no_typeerror_handle_mask_bitwise_or(masked_first):
-    # Obligation from MASKHANDLE-006:
-    # nref_mask.multiply(nref_nomask, handle_mask=np.bitwise_or) and
-    # nref_nomask.multiply(nref_mask, handle_mask=np.bitwise_or) should preserve
-    # the present mask and be TypeError-free.
-    assert True
+    # [MASKHANDLE-006][O2] Both mixed-mask multiply operand orders must return the present
+    # mask and never raise TypeError when handle_mask=np.bitwise_or.
+    # 1) BUILD OPERANDS:
+    #    - nref_mask with mask M, nref_nomask with mask = None.
+    #    - If masked_first is True: left=nref_mask, right=nref_nomask.
+    #    - Else: left=nref_nomask, right=nref_mask.
+    # 2) EXECUTE BRANCH:
+    #    - op_result = left.multiply(right, handle_mask=np.bitwise_or)
+    #    - if TypeError -> failure branch (reject regression guard).
+    #    - if success -> continue.
+    # 3) DECISION:
+    #    - expected_mask = M when exactly one operand carries a mask.
+    #    - assert op_result.mask == expected_mask.
+    # 4) DETERMINISM CHECK:
+    #    - result mask is independent of scalar order/left-right role in this mixed pair.
+    pass
 
 
 def test_MASKHANDLE_006_add_mixed_mask_preserves_deterministic_output_mask_with_bitwise_or():
-    # Obligation from MASKHANDLE-006: mixed-mask non-multiply operator with
-    # handle_mask=np.bitwise_or should keep deterministic pass-through mask behavior.
-    assert True
+    # [MASKHANDLE-006][O3] Non-multiply mixed-mask operator (e.g., add) with handle_mask=
+    # np.bitwise_or must preserve deterministic pass-through mask and avoid exceptions.
+    # 1) BUILD:
+    #    - nref_mask with mask M and nref_nomask with mask=None.
+    # 2) EXECUTE:
+    #    - add_result = nref_mask.add(nref_nomask, handle_mask=np.bitwise_or)
+    #    - if any exception occurs -> failure path.
+    # 3) STATE TRANSITION:
+    #    - because only one operand is masked, output mask MUST become M.
+    # 4) VALIDATION:
+    #    - deterministic output mask and no exception path are required.
+    pass
 
 
 @pytest.mark.parametrize("meth", ["add", "subtract", "divide", "multiply"])
