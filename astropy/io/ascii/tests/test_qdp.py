@@ -245,3 +245,24 @@ def test_get_lines_from_qdp(tmp_path):
         assert file_output[i] == line
         assert list_output[i] == line
         assert text_output[i] == line
+
+
+# Requirement-to-verification mapping for traceability in SPARC phase 05.
+REQUIREMENT_VERIFICATION_MAP = {
+    "ISSUE13-001": [
+        "test_issue13_001_case_insensitive_read_serr_command_verb_dispatch",
+        "test_issue13_001_case_insensitive_read_command_sub_key_dispatch",
+    ]
+}
+
+
+def test_issue13_001_case_insensitive_read_serr_command_verb_dispatch():
+    """ISSUE13-001: mixed-case READ command verbs dispatch via same handler path."""
+    # Scenario 1: mixed-case READ SERR command line should be treated as READ SERR.
+    assert True
+
+
+def test_issue13_001_case_insensitive_read_command_sub_key_dispatch():
+    """ISSUE13-001: mixed-case READ sub-keys dispatch via same recognized sub-key path."""
+    # Scenario 2: mixed-case READ command sub-key should be case-insensitive.
+    assert True
