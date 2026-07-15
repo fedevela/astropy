@@ -456,10 +456,43 @@ def test_issue13_004_issue_spec_preserves_comments_and_whitespace_semantics_with
 
 
 def test_issue13_005_issue_spec_preserves_public_call_path_for_ascii_qdp_without_pre_normalization():
-    """ISSUE13-005: Table.read(..., format='ascii.qdp') must remain the direct call path."""
-    assert True
+    """ISSUE13-005: Table.read(..., format='ascii.qdp') handles lowercase command input as-is."""
+    qdp = """
+    read serr 1 2
+    1 0.5 1 0.5
+    """
+
+    parsed = Table.read(qdp, format="ascii.qdp", names=["x", "y"], table_id=0)
+
+    assert parsed.colnames == ["x", "x_err", "y", "y_err"]
+    assert len(parsed) == 1
+    assert np.allclose(parsed["x"], [1.0])
+    assert np.allclose(parsed["x_err"], [0.5])
+    assert np.allclose(parsed["y"], [1.0])
+    assert np.allclose(parsed["y_err"], [0.5])
 
 
 def test_issue13_005_issue_spec_accepts_lowercase_and_mixed_case_qdp_same_read_shape_format_ascii_qdp():
     """ISSUE13-005: lowercase and mixed-case QDP inputs should succeed with format='ascii.qdp' no preprocessing."""
-    assert True
+    qdp_lower = """
+    read SeRr 1 2
+    1 0.5 1 0.5
+    2 0.75 2 0.75
+    """
+    qdp_upper = """
+    READ SERR 1 2
+    1 0.5 1 0.5
+    2 0.75 2 0.75
+    """
+
+    lower = Table.read(
+        qdp_lower, format="ascii.qdp", table_id=0, names=["x", "y"]
+    )
+    upper = Table.read(
+        qdp_upper, format="ascii.qdp", table_id=0, names=["x", "y"]
+    )
+
+    assert lower.shape == upper.shape
+    assert lower.colnames == upper.colnames == ["x", "x_err", "y", "y_err"]
+    for column in lower.colnames:
+        assert np.ma.allequal(lower[column], upper[column])
