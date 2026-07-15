@@ -296,12 +296,43 @@ wave response
 
 def test_astrst_003_rst_no_header_rows_defaults_preserve_rst_topology():
     """ASTRST-003: default ascii.rst output topology is unchanged without header_rows."""
-    assert True
+    out = StringIO()
+    ascii.write(dat, out, format="ascii.rst")
+
+    assert_equal_splitlines(
+        out.getvalue(),
+        """\
+==== ========= ==== ====
+Col1      Col2 Col3 Col4
+==== ========= ==== ====
+ 1.2   "hello"    1    a
+ 2.4 's worlds    2    2
+==== ========= ==== ====
+""",
+    )
 
 
 def test_astrst_004_rst_header_rows_with_equals_borders_and_column_alignment():
     """ASTRST-004: header_rows output keeps '=' borders and aligned column boundaries."""
-    assert True
+    table = QTable()
+    table["distance"] = [1.2, 2.4] * u.m
+    table["time"] = [3.1, 4.2] * u.s
+    header_rows = ["name", "unit"]
+
+    out = StringIO()
+    ascii.write(table, out, format="ascii.rst", header_rows=header_rows)
+    lines = out.getvalue().splitlines()
+
+    assert len(lines) == 1 + len(header_rows) + 1 + 2 + 1
+    assert lines[0] == lines[len(header_rows)] == lines[-1]
+    assert lines[0].startswith("=")
+    assert set(lines[0].replace(" ", "")) == {"="}
+
+    border = lines[0]
+    boundary_positions = {idx for idx, ch in enumerate(border) if ch == " "}
+    assert all(len(line) == len(border) for line in lines)
+    for line in lines[1:]:
+        assert all(line[idx] == " " for idx in boundary_positions)
 
 
 def test_astrst_005_rst_multiple_header_rows_share_stable_widths_with_data():
