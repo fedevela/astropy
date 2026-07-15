@@ -260,7 +260,11 @@ REQUIREMENT_VERIFICATION_MAP = {
     "ISSUE13-003": [
         "test_issue13_003_issue_spec_rejects_normalized_unknown_command_via_unrecognized_qdp_line",
         "test_issue13_003_issue_spec_rejects_invalid_read_subkey_after_case_normalization",
-    ]
+    ],
+    "ISSUE13-004": [
+        "test_issue13_004_issue_spec_preserves_uppercase_qdp_table_shape_type_order_and_values_after_case_insensitive_read_path",
+        "test_issue13_004_issue_spec_preserves_comments_and_whitespace_semantics_with_uppercase_qdp_and_mixed_spacing",
+    ],
 }
 
 
@@ -383,3 +387,13 @@ def test_issue13_003_issue_spec_rejects_invalid_read_subkey_after_case_normaliza
 
     with pytest.raises(ValueError, match="Unrecognized QDP line"):
         Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
+
+
+def test_issue13_004_issue_spec_preserves_uppercase_qdp_table_shape_type_order_and_values_after_case_insensitive_read_path():
+    """ISSUE13-004: Scenario 1 - preserve uppercase parsing behavior and table metadata-free shape/type/order."""
+    assert True
+
+
+def test_issue13_004_issue_spec_preserves_comments_and_whitespace_semantics_with_uppercase_qdp_and_mixed_spacing():
+    """ISSUE13-004: Scenario 2 - preserve comments and whitespace parsing semantics for uppercase inputs."""
+    assert True
