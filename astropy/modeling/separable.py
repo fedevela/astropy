@@ -145,8 +145,17 @@ def separability_matrix(transform):
     if transform.n_inputs == 1 and transform.n_outputs > 1:
         return np.ones((transform.n_outputs, transform.n_inputs),
                        dtype=np.bool_)
-    separable_matrix = _separable(transform)
-    separable_matrix = np.where(separable_matrix != 0, True, False)
+    separable_matrix = np.asarray(_separable(transform), dtype=np.bool_)
+    if separable_matrix.ndim != 2:
+        separable_matrix = separable_matrix.reshape(
+            transform.n_outputs, transform.n_inputs
+        )
+    if separable_matrix.shape != (transform.n_outputs, transform.n_inputs):
+        raise ValueError(
+            "separability_matrix contract violation: expected "
+            f"{transform.n_outputs} x {transform.n_inputs}, got "
+            f"{separable_matrix.shape}"
+        )
     return separable_matrix
 
 

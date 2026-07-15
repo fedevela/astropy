@@ -404,17 +404,36 @@ AST12907_004_VERIFICATION = {
 
 def test_AST12907_005_nested_compound_matrix_is_2d_boolean():
     """Requirement AST12907-005, Scenario 1: nested compound input returns a 2D boolean matrix."""
-    assert True
+    nested = (models.Shift(1) & (models.Shift(2) & models.Shift(3)))
+
+    matrix = separability_matrix(nested)
+
+    assert isinstance(matrix, np.ndarray)
+    assert matrix.ndim == 2
+    assert matrix.dtype == np.bool_
+    assert matrix.shape == (nested.n_outputs, nested.n_inputs)
 
 
 def test_AST12907_005_nested_compound_matrix_shape_matches_output_input_counts():
     """Requirement AST12907-005, Scenario 2: matrix shape is exactly (n_outputs, n_inputs)."""
-    assert True
+    nested = (models.Shift(1) & (models.Rotation2D(2) & models.Scale(2)))
+
+    matrix = separability_matrix(nested)
+
+    assert matrix.shape == (nested.n_outputs, nested.n_inputs)
 
 
 def test_AST12907_005_nested_vs_flattened_ordering_stable_by_output_input_indices():
     """Requirement AST12907-005, Scenario 3: nested/flattened forms preserve output and input index ordering."""
-    assert True
+    nested = (models.Rotation2D(2) & (models.Shift(1) & models.Shift(2)))
+    flattened = models.Rotation2D(2) & models.Shift(1) & models.Shift(2)
+
+    nested_matrix = separability_matrix(nested)
+    flattened_matrix = separability_matrix(flattened)
+
+    assert nested_matrix.shape == flattened_matrix.shape
+    assert_allclose(nested_matrix, flattened_matrix)
+    assert nested_matrix.shape == (nested.n_outputs, nested.n_inputs)
 
 
 AST12907_005_VERIFICATION = {
