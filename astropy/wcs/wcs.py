@@ -1212,6 +1212,27 @@ reduce these to 2 dimensions using the naxis kwarg.
         """
 
         def _return_list_of_arrays(axes, origin):
+            # WCS-003: logic obligation (empty-list/array axes) -> preserve
+            # input container convention while returning zero-length outputs.
+            # Decision state:
+            #   S0: after broadcast, every axis is empty (`axis.size == 0`).
+            #   S1: branch by `isinstance` of original pre-coerced axes:
+            #       - list_inputs: all original axes are list-like sequence.
+            #       - array_inputs: all original axes are ndarray-like sequence.
+            #   S2: select no-op output shape and container for output.
+            # Transition:
+            #   if S0 and list_inputs:
+            #       output = [np.empty(axis.shape, dtype=float) for axis in axes]
+            #       container = list
+            #   elif S0 and array_inputs:
+            #       output = [np.empty(axis.shape, dtype=float) for axis in axes]
+            #       container = array-convention container observed for non-empty ndarray calls
+            #   else:
+            #       continue into transform path (`func(xy, origin)`).
+            # Failure handling:
+            #   - Do not invoke wcslib in S0.
+            #   - Preserve zero-length contract even when dtype defaults shift;
+            #     do not synthesize coordinates or change axis count.
             # WCS-001: obligation trace -> empty-per-axis inputs must be treated as a
             # zero-point input set across all supported call styles.
             # 1) Decision: after argument coercion, compute effective point count.
@@ -1283,6 +1304,16 @@ reduce these to 2 dimensions using the naxis kwarg.
                 result = self._normalize_sky(result)
             return result
 
+        # WCS-003: tuple-form dispatcher for two empty axis inputs.
+        # - test_wcs_003_empty_list_axes_preserve_list_output_container_and_zero_length_axes
+        #   input: [], []
+        # - test_wcs_003_empty_numpy_axes_preserve_array_output_container_shape_and_float_dtype
+        #   input: np.array([]), np.array([])
+        # - test_wcs_003_empty_list_and_numpy_outputs_consistent_with_container_convention
+        #   compares list-form vs ndarray-form output containers in empty regime.
+        # Inputs with len(args)==2 use NxN single-array path; len(args)==naxis+1 uses axis-tuple path.
+        # In the axis-tuple path, empty inputs must route deterministically by
+        # original container marker, independent of origin or `self.naxis`.
         if len(args) == 2:
             try:
                 xy, origin = args
