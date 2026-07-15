@@ -18,33 +18,100 @@ DEXP_002_ARCHITECTURE = {
     "DEXP-002": {
         "topology": [
             "astropy/io/fits/fitsrec.py::TableData::_scale_back_ascii",
-            "astropy/io/fits/hdu/base.py::_writedata",
+            "astropy/io/fits/fitsrec.py::TableData::_scale_back",
+            "astropy/io/fits/hdu/table.py::_TableBaseHDU::_prewriteto",
+            "astropy/io/fits/hdu/table.py::TableHDU::_writedata_internal",
+            "astropy/io/fits/hdu/table.py::TableHDU::_calculate_datasum",
             "astropy/io/fits/hdu/base.py::_update_checksum",
+            "astropy/io/fits/hdu/base.py::_calculate_datasum",
             "astropy/io/fits/tests/test_checksum.py::TestChecksumFunctions",
         ],
         "ownership": {
-            "module": "astropy/io/fits/fitsrec.py",
+            "module": {
+                "serialization": "astropy/io/fits/fitsrec.py",
+                "write_and_checksum": "astropy/io/fits/hdu/table.py",
+                "checksum_fallback": "astropy/io/fits/hdu/base.py",
+            },
             "boundary": [
-                "ASCII table float field formatting updates the serialized payload",
-                "serialized payload is used by HDU write and checksum data bytes",
+                "TableData::_scale_back_ascii owns ASCII field serialization and performs D-exponent normalization in `output_field`.",
+                "TableHDU payload writer/checksum logic owns the in-memory serialized payload produced by `_scale_back`.",
+                "BaseHDU checksum contract remains the fallback source-of-truth when data is not in-memory.",
             ],
         },
         "contracts": {
             "write_path": (
                 "The downstream writer consumes a serialized field value that was "
-                "already converted to `D` exponent notation."
+                "already converted to `D` exponent notation in `output_field`, then "
+                "consumed as `self.data`/byte-view in `_writedata_internal`."
             ),
             "checksum_path": (
                 "Checksum calculations must use bytes from the same post-conversion "
-                "serialized field stream."
+                "serialized field stream used by the writer and include FITS block padding."
             ),
             "local_state": (
                 "No later stage in the serialization/checksum pipeline may read from "
                 "a stale pre-conversion local temporary."
             ),
         },
+        "dependency_direction": [
+            "TableData::_scale_back_ascii -> TableData::_scale_back (in-place `raw_field` payload finalization)",
+            "TableData::_scale_back -> _TableBaseHDU::_prewriteto (canonical serialized bytes for this HDU)",
+            "._prewriteto -> TableHDU::_writedata_internal (write consumes serialized payload bytes)",
+            "_TableBaseHDU::_prewriteto -> BaseHDU._update_checksum (checksum decision happens after staging)",
+            "BaseHDU._update_checksum -> BaseHDU._calculate_datasum (data-source branching by `_data_loaded`)",
+            "TableHDU::_calculate_datasum -> BaseHDU::_calculate_datasum (non-ASCII table fallback)",
+        ],
+        "integration_seams": {
+            "write": {
+                "producer": "TableData::_scale_back",
+                "transformer": "TableData::_scale_back_ascii",
+                "consumer": "TableHDU::_writedata_internal",
+                "contract": "single canonical serialized byte-array flows through all stages, never a detached temporary local copy.",
+            },
+            "checksum": {
+                "producer": "TableData::_scale_back",
+                "transformer": "BaseHDU._update_checksum -> _calculate_datasum",
+                "consumer": "header keyword update (`CHECKSUM` / `DATASUM`)",
+                "contract": "checksum input for in-memory path is `self.data` bytes after D-normalization.",
+            },
+        },
         "verification": DEXP_002_VERIFICATION["DEXP-002"],
+        "readiness": {
+            "local_source_eliminated": "true",
+            "write_and_checksum_byte_sources_aligned": "true",
+            "ownership_boundary_resolved": [
+                "fitsrec.py owns field-level serialization ownership",
+                "table.py owns HDU-level payload staging",
+                "base.py owns checksum source routing",
+            ],
+        },
     },
+}
+
+DEXP_002_POC_PLACEMENT = {
+    "logic_obligation": [
+        {
+            "requirement": "DEXP-002",
+            "pressure": "output_field ownership",
+            "locator": "astropy/io/fits/fitsrec.py::_scale_back_ascii",
+            "artifact_class": "format layer contract",
+            "justification": "Only place where ASCII payload bytes are normalized.",
+        },
+        {
+            "requirement": "DEXP-002",
+            "pressure": "write/checksum coupling",
+            "locator": "astropy/io/fits/hdu/table.py::_TableBaseHDU::_prewriteto",
+            "artifact_class": "handoff boundary",
+            "justification": "Serialization must complete before checksum/write are triggered.",
+        },
+        {
+            "requirement": "DEXP-002",
+            "pressure": "checksum source-of-truth",
+            "locator": "astropy/io/fits/hdu/base.py::_calculate_datasum",
+            "artifact_class": "data-source routing",
+            "justification": "Fallback branch must keep parity with staged payload when used.",
+        },
+    ]
 }
 
 
