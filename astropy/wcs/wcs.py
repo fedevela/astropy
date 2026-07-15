@@ -1211,41 +1211,10 @@ reduce these to 2 dimensions using the naxis kwarg.
         or a single Nx2 array.
         """
 
-        def _return_list_of_arrays(axes, origin):
-            # WCS-003: logic obligation (empty-list/array axes) -> preserve
-            # input container convention while returning zero-length outputs.
-            # Decision state:
-            #   S0: after broadcast, every axis is empty (`axis.size == 0`).
-            #   S1: branch by `isinstance` of original pre-coerced axes:
-            #       - list_inputs: all original axes are list-like sequence.
-            #       - array_inputs: all original axes are ndarray-like sequence.
-            #   S2: select no-op output shape and container for output.
-            # Transition:
-            #   if S0 and list_inputs:
-            #       output = [np.empty(axis.shape, dtype=float) for axis in axes]
-            #       container = list
-            #   elif S0 and array_inputs:
-            #       output = [np.empty(axis.shape, dtype=float) for axis in axes]
-            #       container = array-convention container observed for non-empty ndarray calls
-            #   else:
-            #       continue into transform path (`func(xy, origin)`).
-            # Failure handling:
-            #   - Do not invoke wcslib in S0.
-            #   - Preserve zero-length contract even when dtype defaults shift;
-            #     do not synthesize coordinates or change axis count.
-            # WCS-001: obligation trace -> empty-per-axis inputs must be treated as a
-            # zero-point input set across all supported call styles.
-            # 1) Decision: after argument coercion, compute effective point count.
-            #    If every axis array is empty, remaining shape contract is derived from each
-            #    input axis (e.g. `axes[i].shape`), not by fabricated coordinates.
-            # 2) Transition:
-            #    - Input state: list-of-axis arrays accepted by array-converter.
-            #    - Empty state: no elements in any axis vector.
-            #    - Output state: one empty world-vector per axis, preserving shape.
-            # 3) Failure-path control:
-            #    - In the empty state, do not call wcslib (`func`) or sky-normalization
-            #      branches because those can emit InconsistentAxisTypesError.
-            #    - In non-empty state, continue through existing broadcast and transform.
+        def _return_list_of_arrays(axes, origin, input_container_mode):
+            # WCS-003: empty-input short-circuit must preserve the established
+            # per-input-style container convention while returning empty world
+            # axis arrays.
             # WCS-002: deterministic multi-axis empty-input behavior.
             # 2.1) Obligation 1 (3-axis tuple): accept 3-tuples of empty inputs as
             #      axis-segment inputs, broadcast-compatible with shape ()/shape (0,),
@@ -1268,7 +1237,11 @@ reduce these to 2 dimensions using the naxis kwarg.
                     "Coordinate arrays are not broadcastable to each other")
 
             if sky == 'output' and all(axis.size == 0 for axis in axes):
-                return [np.empty(axes[0].shape) for _ in range(self.naxis)]
+                empty_axes = [np.empty(axes[0].shape, dtype=float)
+                              for _ in range(self.naxis)]
+                if input_container_mode == "list":
+                    return empty_axes
+                return list(empty_axes)
 
             xy = np.hstack([x.reshape((x.size, 1)) for x in axes])
 
@@ -1324,12 +1297,14 @@ reduce these to 2 dimensions using the naxis kwarg.
                     "When providing two arguments, they must be "
                     "(coords[N][{0}], origin)".format(self.naxis))
             if self.naxis == 1 and len(xy.shape) == 1:
-                return _return_list_of_arrays([xy], origin)
+                return _return_list_of_arrays([xy], origin, "list")
             return _return_single_array(xy, origin)
 
         elif len(args) == self.naxis + 1:
             # WCS-002: N-axis tuple call form (`arg1, arg2, ... , argN, origin`) is the
             # primary locus for multi-axis empty-input obligations.
+            input_container_mode = "ndarray" if all(
+                isinstance(x, np.ndarray) for x in args[:-1]) else "list"
             axes = args[:-1]
             origin = args[-1]
             try:
@@ -1340,7 +1315,8 @@ reduce these to 2 dimensions using the naxis kwarg.
                     "When providing more than two arguments, they must be " +
                     "a 1-D array for each axis, followed by an origin.")
 
-            return _return_list_of_arrays(axes, origin)
+            return _return_list_of_arrays(
+                axes, origin, input_container_mode)
 
         raise TypeError(
             "WCS projection has {0} dimensions, so expected 2 (an Nx{0} array "
