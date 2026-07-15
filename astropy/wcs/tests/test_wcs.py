@@ -219,6 +219,36 @@ def test_3d_shapes():
         assert len(result) == 3
 
 
+def test_wcsxform_001_returns_empty_family_for_list_inputs_origin_0():
+    """
+    WCSXFORM-001
+    Verify placeholder: no exception for fully empty list inputs at origin 0.
+    """
+    w = wcs.WCS(naxis=2)
+    w.wcs_pix2world([], [], 0)
+    assert True
+
+
+def test_wcsxform_001_returns_empty_family_for_list_inputs_origin_1():
+    """
+    WCSXFORM-001
+    Verify placeholder: no exception for fully empty list inputs at origin 1.
+    """
+    w = wcs.WCS(naxis=2)
+    w.wcs_pix2world([], [], 1)
+    assert True
+
+
+def test_wcsxform_001_returns_empty_family_for_numpy_empty_axes_origin_0():
+    """
+    WCSXFORM-001
+    Verify placeholder: no exception for zero-length ndarray inputs at origin 0.
+    """
+    w = wcs.WCS(naxis=2)
+    w.wcs_pix2world(np.array([]), np.array([]), 0)
+    assert True
+
+
 def test_preserve_shape():
     w = wcs.WCS(naxis=2)
 
