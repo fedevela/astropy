@@ -81,6 +81,17 @@ def _line_type(line, delimiter=None):
         return "comment"
     match = _line_type_re.match(line)
 
+    # ISSUE13-003: logic obligation.
+    # 1) If line is blank, classify as comment.
+    # 2) If regex matches:
+    #    - command path is only valid for exact "READ SERR" / "READ TERR"
+    #      after case-folding, preserving existing command-token semantics.
+    #    - data/new/comment classification follows current behavior unchanged.
+    # 3) If regex does not match, raise the existing invalid-command error path.
+    #    - unknown verbs (e.g., "READD"), misspelled READ sub-keys
+    #      (e.g., "SERRR"), and other command typos must not be normalized
+    #      into supported handlers.
+    # - failure destination remains ValueError("Unrecognized QDP line: ...").
     if match is None:
         raise ValueError(f"Unrecognized QDP line: {line}")
     for type_, val in match.groupdict().items():
@@ -313,6 +324,13 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
                 # - parse indices as integers to build canonical `err_specs`.
                 # - canonical `err_specs` must be identical for mixed-case or
                 #   uppercase READ SERR/TERR commands.
+                # ISSUE13-003: logic obligation.
+                # - command dispatch is intentionally limited to serr/terr keys only.
+                # - after lower() normalization, any other key must not resolve to a
+                #   valid command handler.
+                # - because line-level recognition is strict, this branch should never
+                #   materialize an unrecognized command key; if it did, behavior must
+                #   remain reject/ignore rather than coercing to serr/terr.
                 for cline in command_lines.strip().split("\n"):
                     command = cline.strip().split()
                     # This should never happen, but just in case.
