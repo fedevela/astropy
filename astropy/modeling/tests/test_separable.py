@@ -217,12 +217,24 @@ def test_AST12907_002_nested_pix2sky_tan_and_flattened_pair_equivalent_blocked_m
 
 def test_AST12907_003_compound_model6_result6_nested_compound_case_remains_stable_after_flattening_fix():
     """Requirement AST12907-003, Scenario 1: baseline coverage for test_separable[compound_model6-result6]."""
-    assert True
+    nested = models.Pix2Sky_TAN() & (models.Linear1D(10) & models.Linear1D(5))
+    flattened = (models.Pix2Sky_TAN()
+                 & models.Linear1D(10)
+                 & models.Linear1D(5))
+
+    assert_allclose(separability_matrix(nested), separability_matrix(flattened))
+    assert_allclose(is_separable(nested), is_separable(flattened))
 
 
 def test_AST12907_003_compound_model9_result9_nested_compound_case_remains_stable_after_flattening_fix():
     """Requirement AST12907-003, Scenario 2: baseline coverage for test_separable[compound_model9-result9]."""
-    assert True
+    nested = ((models.Rotation2D(2) & models.Shift(4))
+              & (models.Linear1D(10) & models.Linear1D(5)))
+    flattened = (models.Rotation2D(2) & models.Shift(4)
+                 & models.Linear1D(10) & models.Linear1D(5))
+
+    assert_allclose(separability_matrix(nested), separability_matrix(flattened))
+    assert_allclose(is_separable(nested), is_separable(flattened))
 
 
 # Contract-traceability mapping for traceability audits.

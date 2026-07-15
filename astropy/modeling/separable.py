@@ -155,16 +155,12 @@ def _flatten_ampersand_chain(transform):
     #   input tree shape must only affect traversal ordering, not matrix semantics.
     # - no local transformation failure handling is introduced; non-ampersand
     #   branches remain terminal operands and are delegated to downstream logic.
-    operands = []
-    stack = [transform]
-    while stack:
-        node = stack.pop()
-        if isinstance(node, CompoundModel) and node.op == '&':
-            stack.append(node.right)
-            stack.append(node.left)
-        else:
-            operands.append(node)
-    return operands
+    if isinstance(transform, CompoundModel) and transform.op == '&':
+        operands = _flatten_ampersand_chain(transform.left)
+        operands.extend(_flatten_ampersand_chain(transform.right))
+        return operands
+
+    return [transform]
 
 
 def _to_coord_operand(operand, pos, noutp):
@@ -390,6 +386,9 @@ def _separable(transform):
             # Failure path:
             # - propagate ModelDefinitionError or similar exceptions unchanged.
             operands = _flatten_ampersand_chain(transform)
+            if len(operands) == 1:
+                return _separable(operands[0])
+
             separable_matrix = _separable(operands[0])
             for operand in operands[1:]:
                 separable_matrix = _operators['&'](separable_matrix,
