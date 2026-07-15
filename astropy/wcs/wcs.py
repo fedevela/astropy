@@ -1225,6 +1225,17 @@ reduce these to 2 dimensions using the naxis kwarg.
         # 5) On non-empty input, use current conversion + WCS call flow unchanged.
         # 6) Preserve existing exceptions (ValueError/TypeError/inconsistent axis
         #    errors) for malformed/mismatched/partially-empty input as currently.
+        # [GUID: WCSXFORM-002]
+        # Logic obligations for empty required-axis contract:
+        # O1 (Obligation 1): if required axes are all empty and no scalar axis is mixed
+        #    with non-empty axes, return zero-length outputs (per-axis list or NxN)
+        #    before any wcslib transform call; no InconsistentAxisTypesError emitted.
+        # O2 (Obligation 2): this path applies to all callers sharing this helper,
+        #    including 3-axis helper-path transforms that pass axis arrays through
+        #    the len(args)==naxis+1 branch.
+        # O3 (Obligation 3): do not mutate WCS object state on empty input; all
+        #    branches are pure and must leave subsequent non-empty invocations
+        #    unaffected.
 
         def _return_list_of_arrays(axes, origin):
             try:
@@ -1298,6 +1309,11 @@ reduce these to 2 dimensions using the naxis kwarg.
                 self.naxis, self.naxis + 1, len(args)))
 
     def all_pix2world(self, *args, **kwargs):
+        # [GUID: WCSXFORM-002][Obligation 2]
+        # Control-flow obligation:
+        # - Route into _array_converter unchanged to preserve helper-path behavior.
+        # - Empty required-axis batches must use helper empty-output short-circuit.
+        # - Preserve existing full-distortion invocation for non-empty inputs.
         return self._array_converter(
             self._all_pix2world, 'output', *args, **kwargs)
     all_pix2world.__doc__ = """
@@ -1379,6 +1395,12 @@ reduce these to 2 dimensions using the naxis kwarg.
         #     existing per-axis/family-shaped empty container and complete with no
         #     InconsistentAxisTypesError.
         #   - Non-empty behavior must remain unchanged.
+        # [GUID: WCSXFORM-002][Obligation 1]
+        # Branch rule:
+        # 1) Guard: if self.wcs is missing => ValueError preserved.
+        # 2) Delegate to _array_converter with wcslib core transform.
+        # 3) If helper detects all required-axis empties -> return zero-length result.
+        # 4) If helper raises axis consistency errors, propagate as before.
         return self._array_converter(
             lambda xy, o: self.wcs.p2s(xy, o)['world'],
             'output', *args, **kwargs)
@@ -1848,6 +1870,13 @@ reduce these to 2 dimensions using the naxis kwarg.
         if self.wcs is None:
             raise ValueError("No basic WCS settings were created.")
 
+        # [GUID: WCSXFORM-002][Obligation 2]
+        # Control-flow obligation:
+        # - Delegate to _array_converter for argument normalization and empty-input
+        #   short-circuit.
+        # - empty required-axis inputs must return per-axis empty arrays without invoking
+        #   iterative wcslib path.
+        # - non-empty and malformed cases keep existing behavior.
         return self._array_converter(
             lambda *args, **kwargs:
             self._all_world2pix(
@@ -2186,6 +2215,15 @@ reduce these to 2 dimensions using the naxis kwarg.
     def wcs_world2pix(self, *args, **kwargs):
         if self.wcs is None:
             raise ValueError("No basic WCS settings were created.")
+        # [GUID: WCSXFORM-002][Obligation 1][Obligation 3]
+        # State-transition obligation:
+        # 1) Input arrives as either NxN coords or naxis individual arrays.
+        # 2) Empty-input transition:
+        #    - if all required axes have size 0, return empty arrays shaped by input.
+        #    - do not raise InconsistentAxisTypesError.
+        #    - retain method-level state; next non-empty invocation must behave as normal.
+        # 3) Non-empty transition:
+        #    - call _array_converter and keep existing world->pixel wcslib flow.
         return self._array_converter(
             lambda xy, o: self.wcs.s2p(xy, o)['pixcrd'],
             'input', *args, **kwargs)
