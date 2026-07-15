@@ -72,6 +72,17 @@ def _line_type(line, delimiter=None):
     # ISSUE13-001: command token matching must be case-insensitive for both
     # verb (READ) and key (SERR/TERR) while preserving all previous routing
     # behavior.
+    # ISSUE13-004: logic obligation.
+    # - Inputs: a raw line and optional delimiter.
+    # - Decision sequence:
+    #   1) trim outer whitespace; classify empty after trim as "comment" first.
+    #   2) apply case-insensitive line grammar only for dispatch recognition.
+    #   3) preserve original lexical shape of matched command lines for downstream
+    #      token handling; this keeps comments, spacing, and row token values stable.
+    # - Failure path:
+    #   - any non-empty line that does not satisfy the accepted grammar or
+    #     accepted command key set must continue through existing
+    #     `Unrecognized QDP line` ValueError.
     # ISSUE13-002: pseudocode branch:
     # - classify command lines with case-insensitive matching for READ/SERR/TERR.
     # - preserve downstream token-type outcomes independent of lexical case.
@@ -147,6 +158,13 @@ def _get_type_from_list_of_lines(lines, delimiter=None):
         ...
     ValueError: Inconsistent number of columns
     """
+    # ISSUE13-004: logic obligation.
+    # 1) derive deterministic per-line type labels by calling `_line_type`.
+    # 2) enforce invariant: all observed data rows expose same column-count token
+    #    cardinality via separator-strict split.
+    # 3) if any data row has a different cardinality, propagate
+    #    `ValueError("Inconsistent number of columns")` unchanged.
+    # 4) if there is no data row, keep `ncol=None` to avoid introducing behavior.
     types = [_line_type(line, delimiter=delimiter) for line in lines]
     current_ncol = None
     for type_ in types:
@@ -161,6 +179,12 @@ def _get_type_from_list_of_lines(lines, delimiter=None):
 
 
 def _get_lines_from_file(qdp_file):
+    # ISSUE13-004: logic obligation.
+    # - Input source branch remains unchanged:
+    #   str with newline chars, filename path, or iterable of lines.
+    # - Preserve legacy semantics for whitespace/comments:
+    #   file-path branch keeps stripping trailing newline only and does not alter
+    #   in-line whitespace used by later parsers.
     if "\n" in qdp_file:
         lines = qdp_file.split("\n")
     elif isinstance(qdp_file, str):
@@ -232,6 +256,13 @@ def _interpret_err_lines(err_specs, ncols, names=None):
     # - interpret canonicalized `serr`/`terr` indices deterministically.
     # - emit base column then `_err` or `_perr`/`_nerr` columns.
     # - keep this mapping identical for mixed-case and uppercase command input.
+    # ISSUE13-004: logic obligation.
+    # - Apply `err_specs` to `ncols` only, never reordering values based on
+    #   command token casing.
+    # - Preserve declared data-column input order (`names`) and derive additional
+    #   error-column names by positional expansion.
+    # - Reject only on existing invariants (name-count mismatch) to keep numeric
+    #   shape/order behavior stable.
 
     if names is not None:
         all_error_cols = len(serr_cols) + len(terr_cols) * 2
@@ -299,6 +330,29 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
     command_lines = ""
     current_rows = None
 
+    # ISSUE13-004: logic obligation.
+    # - FSM states: `initial_comments` (before first table data),
+    #   `current_rows` (active rows), `command_lines` (command block), `comment_text`
+    #   (table-local comments), `err_specs` (parsed command offsets), `colnames` (schema).
+    # - For each `(line, datatype)`:
+    #   1) normalize line by trim + leading "!" removal for classification-independent
+    #      comment/data token extraction.
+    #   2) route by deterministic branch:
+    #      comment -> append raw stripped text to `comment_text`;
+    #      command -> append as-is to `command_lines`, and capture initial comment
+    #                handoff on first command.
+    #      data -> lazily compute err specs (only once), then parse value tokens into
+    #              row list.
+    #      new -> materialize table boundary and reset per-table collectors.
+    #   3) command dispatch check remains strict on token semantics, with only
+    #      `READ` + (`serr`|`terr`) accepted after lowercase normalization.
+    # - Value parsing branch stays unchanged:
+    #   - split in input order with requested delimiter;
+    #   - emit mask token "NO" only when token text exactly equals "NO";
+    #   - attempt int then float conversion to preserve current dtype inference order.
+    # - Failure path:
+    #   - no change in table shape/dtype from command token case changes; existing
+    #     branch rejections keep surfacing by existing `ValueError`.
     for line, datatype in zip(lines, contents):
         line = line.strip().lstrip("!")
         # Is this a comment?
@@ -343,9 +397,9 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
                 #   remain reject/ignore rather than coercing to serr/terr.
                 for cline in command_lines.strip().split("\n"):
                     command = cline.strip().split()
-                    # This should never happen, but just in case.
-                    if len(command) < 3:
-                        continue
+            # This should never happen, but just in case.
+            if len(command) < 3:
+                continue
                     # ISSUE13-001: recognize command sub-keys case-insensitively.
                     if command[0].upper() != "READ":
                         raise ValueError(f"Unrecognized QDP line: {cline}")
@@ -480,6 +534,9 @@ def _read_table_qdp(qdp_file, names=None, table_id=None, delimiter=None):
     # ISSUE13-002: pseudocode branch:
     # - selection contract: return `tables[table_id]` from parser output.
     # - parsing invariants from mixed/lower-case READ SERR are enforced upstream.
+    # ISSUE13-004: logic obligation.
+    # - Preserve output ordering and indexing: return exactly the selected `table_id`
+    #   without re-sorting tables, converting dtypes, or mutating rows.
 
     return tables[table_id]
 
