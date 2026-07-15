@@ -23,6 +23,15 @@ from .mappings import Mapping
 
 __all__ = ["is_separable", "separability_matrix"]
 
+# AST12907-004 requirement traceability (pseudocode obligation locus)
+# - Preserve non-nested behavior for: test_coord_matrix, test_cdot, test_cstack,
+#   test_arith_oper, test_custom_model_separable, and compound_model0-result0,
+#   compound_model1-result1, compound_model2-result2, compound_model3-result3,
+#   compound_model4-result4, compound_model5-result5, compound_model7-result7,
+#   compound_model8-result8.
+# - AST12907-004 explicitly excludes compound_model6-result6 and
+#   compound_model9-result9 exceptions handled in AST12907-003.
+
 
 def is_separable(transform):
     """
@@ -54,6 +63,18 @@ def is_separable(transform):
         array([ True,  True,  True,  True]...)
 
     """
+    # AST12907-004.S1: preserve legacy one-to-many short-circuit contract.
+    # INPUTS:
+    # - transform.n_inputs, transform.n_outputs
+    # DECISION:
+    # - IF n_inputs == 1 and n_outputs > 1:
+    #   - return array(False, repeat=n_outputs)
+    # - ELSE:
+    #   - separable_matrix <- _separable(transform)
+    #   - is_separable <- separable_matrix.sum(1)
+    #   - is_separable <- True iff row sum == 1
+    # FAILURE/EXCEPTIONS:
+    # - delegates to _separable and operator-level failures unchanged
     if transform.n_inputs == 1 and transform.n_outputs > 1:
         is_separable = np.array([False] * transform.n_outputs).T
         return is_separable
@@ -94,6 +115,17 @@ def separability_matrix(transform):
         array([[ True, False], [False,  True], [ True, False], [False,  True]]...)
 
     """
+    # AST12907-004.S1: preserve legacy one-to-many matrix contract.
+    # INPUTS:
+    # - transform.n_inputs, transform.n_outputs
+    # DECISION:
+    # - IF n_inputs == 1 and n_outputs > 1:
+    #   - return ones((n_outputs, n_inputs), dtype=bool)
+    # - ELSE:
+    #   - separable_matrix <- _separable(transform)
+    #   - normalize any non-zero element to True
+    # FAILURE/EXCEPTIONS:
+    # - no local recovery; caller-visible exceptions propagate
     if transform.n_inputs == 1 and transform.n_outputs > 1:
         return np.ones((transform.n_outputs, transform.n_inputs),
                        dtype=np.bool_)
@@ -205,6 +237,13 @@ def _arith_oper(left, right):
     result : ndarray
         Result from this operation.
     """
+    # AST12907-004.S5: preserve non-nested arithmetic operator contract.
+    # DECISION:
+    # - derive n_inputs/n_outputs for both operands.
+    # - IF arities differ -> raise ModelDefinitionError.
+    # - ELSE -> return ones((n_outputs, n_inputs)).
+    # This keeps existing non-nested error and matrix-shape behavior.
+
     # models have the same number of inputs and outputs
     def _n_inputs_outputs(input):
         if isinstance(input, Model):
@@ -246,6 +285,17 @@ def _coord_matrix(model, pos, noutp):
         is a left or right child.
 
     """
+    # AST12907-004.S2: preserve non-nested simple-model matrix behavior.
+    # BRANCHING:
+    # - IF model is Mapping:
+    #     - derive rows from mapping indices.
+    #     - place block in left span when pos='left', right span when pos='right'.
+    # - ELSE IF model.separable is False:
+    #     - emit dense ones over the model output/input region.
+    # - ELSE (model.separable is True):
+    #     - emit diagonal-like local dependency rows, then roll right-position rows if needed.
+    # OUTPUT:
+    # - matrix dimensions and placement are unchanged from prior logic.
     if isinstance(model, Mapping):
         axes = []
         for i in model.mapping:
@@ -259,6 +309,7 @@ def _coord_matrix(model, pos, noutp):
         else:
             mat[-model.n_outputs:, -model.n_inputs:] = m
         return mat
+    # AST12907-004.S2: custom Model.separable attribute is the single source of truth.
     if not model.separable:
         # this does not work for more than 2 coordinates
         mat = np.zeros((noutp, model.n_inputs))
@@ -291,6 +342,15 @@ def _cstack(left, right):
         Result from this operation.
 
     """
+    # AST12907-004.S4: preserve non-nested "&" block composition behavior.
+    # DECISION:
+    # - noutp <- _compute_n_outputs(left, right)
+    # - cleft <- _to_coord_operand(left, 'left', noutp)
+    # - cright <- _to_coord_operand(right, 'right', noutp)
+    # - return np.hstack([cleft, cright])
+    # PROPERTY:
+    # - preserve disjoint input-column blocks with no new cross-block coupling.
+
     # AST12907-002: '&' transition must append independent coordinate block.
     # Step:
     # 1) noutp <- left.n_outputs + right.n_outputs
@@ -319,6 +379,15 @@ def _cdot(left, right):
     result : ndarray
         Result from this operation.
     """
+
+    # AST12907-004.S3: preserve non-nested "|" semantics for operand composition.
+    # DECISION:
+    # - swap(left, right) assignment is canonical for this operator.
+    # - convert each operand into coord-matrix form if needed.
+    # - try matrix-matrix dot product.
+    # EXCEPTION:
+    # - on ValueError, raise ModelDefinitionError with operator diagnostics.
+    # - preserve same exception shape/propagation behavior as before.
 
     left, right = right, left
 
@@ -359,6 +428,10 @@ def _separable(transform):
         An array of shape (transform.n_outputs,) of boolean type
         Each element represents the separablity of the corresponding output.
     """
+    # AST12907-004.S6/S7: preserve non-regressed compound traversal semantics.
+    # - non-regressed fixtures keep existing branching for operator-specific composition.
+    # - only '&' nested-chain normalization is allowed to alter traversal form.
+    # - nested '&' behavior changed only for AST12907-003-covered cases.
     if (transform_matrix := transform._calculate_separability_matrix()) is not NotImplemented:
         return transform_matrix
     elif isinstance(transform, CompoundModel):
@@ -395,6 +468,11 @@ def _separable(transform):
                                                    _separable(operand))
             return separable_matrix
 
+        # AST12907-004.S7: legacy non-nested compound path for operators
+        # other than '&' must remain unchanged in output semantics.
+        # - compute left/right recursively.
+        # - dispatch exact operator matrix function via _operators.
+        # - propagate ModelDefinitionError from operator nodes.
         sepleft = _separable(transform.left)
         sepright = _separable(transform.right)
         return _operators[transform.op](sepleft, sepright)
