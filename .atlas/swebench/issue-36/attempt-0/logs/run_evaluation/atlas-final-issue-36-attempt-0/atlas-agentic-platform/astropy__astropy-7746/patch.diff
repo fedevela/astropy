@@ -1,0 +1,1251 @@
+diff --git a/astropy/wcs/WCSXFORM-001-architecture.md b/astropy/wcs/WCSXFORM-001-architecture.md
+new file mode 100644
+index 0000000..b200959
+--- /dev/null
++++ b/astropy/wcs/WCSXFORM-001-architecture.md
+@@ -0,0 +1,74 @@
++# WCSXFORM-001 Architecture Map: Empty-input handling in `wcs_pix2world`
++
++## Requirement traceability
++- `GUID: WCSXFORM-001` — Empty input handling for `wcs_pix2world` must return empty outputs in the existing return-family (no exception, especially no `InconsistentAxisTypesError`) for fully-empty required-axis inputs.
++- `GUID: WCSXFORM-001` implementation checkpoints:
++  - Tests (placeholder currently): `astropy/wcs/tests/test_wcs.py`
++    - `test_wcsxform_001_returns_empty_family_for_list_inputs_origin_0`
++    - `test_wcsxform_001_returns_empty_family_for_list_inputs_origin_1`
++    - `test_wcsxform_001_returns_empty_family_for_numpy_empty_axes_origin_0`
++
++## Obligation → Architecture pressure map
++
++1. Preserve return-family shape for success-empty cases.
++   - Type pressure: output contract ownership.
++   - Locus: `WCS._array_converter()`
++     - Branch families:
++       - single NxN argument path
++       - per-axis argument path
++
++2. Bypass transform path on fully-empty required-axis inputs.
++   - Type pressure: call-sequence boundary and failure isolation.
++   - Locus: `WCS._array_converter()` nested helpers:
++     - `_return_list_of_arrays(axes, origin)`
++     - `_return_single_array(xy, origin)`
++
++3. Keep error behavior for malformed, non-empty, and mixed-shape inputs unchanged.
++   - Type pressure: error contract consistency at API boundary.
++   - Locus: `WCS._array_converter()` top-level dispatch + conversion/shape checks.
++
++4. Surface requirement at API entrypoint without changing public signatures.
++   - Type pressure: public API boundary stability.
++   - Locus: `WCS.wcs_pix2world()`
++
++## Placement and ownership
++
++- Primary owner: `astropy/wcs/wcs.py`
++  - `WCS.wcs_pix2world` remains sole API entry for this obligation.
++  - `WCS._array_converter` is the structural owner for input-family normalization and empty-input routing.
++  - Nested helpers inside `_array_converter` are boundary-specific owners for shape-preserving output reconstruction.
++- Verification owner: `astropy/wcs/tests/test_wcs.py`
++  - Keeps requirement-scoped regressions colocated with existing WCS API tests.
++
++## Boundary and contract model
++
++- API boundary:
++  - Caller -> `WCS.wcs_pix2world(*args, **kwargs)` -> `_array_converter`.
++  - No new public interfaces; no signature/keyword changes.
++
++- Domain boundary:
++  - `_array_converter` receives heterogenous input forms and dispatches to exactly one of:
++    - single-array contract (`[N, naxis]` input shape),
++    - per-axis contract (`(axis_0, axis_1, ..., axis_{n-1}, origin)`).
++
++- Output-contract boundary (current family preservation):
++  - Per-axis contract returns one output per axis.
++  - NxN contract returns `[N, naxis]` output.
++  - Empty inputs must emit zero-length outputs in the same contract shape.
++
++- Integration seam:
++  - `WCS.wcs_pix2world` delegates transformation to `self.wcs.p2s(... )['world']` through `_array_converter`.
++  - Empty fast-paths should terminate before this seam to avoid raising axis-type conversion exceptions for fully-empty input sets.
++
++## Dependency direction
++
++- `wcs.py` public method depends on `_array_converter` for normalization and family routing.
++- `_array_converter` depends inward on NumPy broadcasting/stacking and the WCS low-level core call.
++- No outward dependency changes are required for this issue.
++
++## Structural completion check
++
++- Architectural readiness criteria for `WCSXFORM-001`:
++  - Traced requirement has a named owning locus in implementation (`wcs.py`) and tests (`test_wcs.py`).
++  - Output-shape contract boundaries and API stability constraints are documented in a single architecture artifact.
++  - The implementation seam (`wcs_pix2world` -> `_array_converter` -> `p2s` transform) is explicitly preserved with an empty-input exit condition point.
+diff --git a/astropy/wcs/WCSXFORM-002-architecture.md b/astropy/wcs/WCSXFORM-002-architecture.md
+new file mode 100644
+index 0000000..e928364
+--- /dev/null
++++ b/astropy/wcs/WCSXFORM-002-architecture.md
+@@ -0,0 +1,80 @@
++# WCSXFORM-002 Architecture Map: Empty-input success for shared-array transform helpers
++
++## Requirement traceability
++- `GUID: WCSXFORM-002` — For helper-path transform methods that route through `_array_converter` / `_return_list_of_arrays`, fully-empty required-axis inputs must return zero-length outputs with no `InconsistentAxisTypesError`, while preserving existing signatures and non-empty behavior.
++- `GUID: WCSXFORM-002` implementation checkpoints:
++  - Tests (placeholder scope): `astropy/wcs/tests/test_wcs.py`
++    - `test_wcsxform_002_wcs_world2pix_empty_required_axes_return_zero_length_without_axis_errors`
++    - `test_wcsxform_002_all_world2pix_empty_3axis_inputs_return_empty_family`
++    - `test_wcsxform_002_wcs_world2pix_empty_then_non_empty_keeps_contract`
++
++## Obligation → Architecture pressure map
++
++1. Shared-helper empty-input short-circuit for required axes
++  - Type pressure: invariant preservation at shared boundary (`_array_converter`).
++  - Locus: `WCS._array_converter()` and `WCS._array_converter._return_list_of_arrays()`.
++  - Structural intent: all-zero-size axis lists must resolve to shaped empty outputs at the helper boundary before wcslib dispatch.
++
++2. Coverage across all helper-path methods (3-axis family included)
++  - Type pressure: behavior consistency and interface inheritance.
++  - Locus: method-level entrypoints that already call `_array_converter`:
++    - `WCS.wcs_pix2world()`
++    - `WCS.wcs_world2pix()`
++    - `WCS.all_pix2world()`
++    - `WCS.all_world2pix()`
++  - Structural intent: single shared contract means one empty-input normalization path, no per-method forks.
++
++3. State integrity across empty -> non-empty sequencing
++  - Type pressure: object boundary and call-sequence safety.
++  - Locus: no new state is written inside `_array_converter` or method entrypoints.
++  - Structural intent: empty calls must be read-only and side-effect free so the same instance preserves normal non-empty behavior afterward.
++
++4. Non-goals isolation
++  - Type pressure: surface stability.
++  - Locus: no additional methods/signatures are altered; only existing helper-path methods remain under contract.
++
++## Placement and ownership
++
++- Primary owning module: `astropy/wcs/wcs.py`
++  - `WCS._array_converter()` owns input normalization, broadcasting, return-family reconstruction, and empty-output routing.
++  - `_return_list_of_arrays()` is the explicit shape-preserving empty-output constructor for per-axis API family.
++  - `WCS._return_single_array()` is the NxN contract owner and should remain a non-empty-only transform path.
++  - Public entrypoints (`wcs_pix2world`, `wcs_world2pix`, `all_pix2world`, `all_world2pix`) remain thin delegators.
++
++- Verification owner: `astropy/wcs/tests/test_wcs.py`
++  - Keeps all acceptance criteria anchored in method-level regressions.
++
++## Boundary and contract model
++
++- API boundary:
++  - Caller -> `wcs_*` / `all_*` method -> `_array_converter` -> wcslib kernel method.
++  - Public signatures remain unchanged (positional/keyword compatibility preserved).
++
++- Domain boundary:
++  - `_array_converter` has two legal input families:
++    - NxN coordinate arrays with origin.
++    - Per-axis sequence with `naxis+1` arguments ending in origin.
++
++- Output-contract boundary:
++  - Per-axis contract returns one array per required axis.
++  - NxN contract returns a stacked `[N, naxis]` result.
++  - Empty required-axis inputs map to the same contract shape with zero-length containers.
++
++- Integration seam (non-failing path):
++  - `wcs.py` public methods -> `_array_converter`.
++  - `_array_converter` should only invoke wcslib (`func`) when non-empty path is selected.
++  - Empty path bypasses wcslib to avoid axis-type conversion exceptions.
++
++## Dependency direction
++
++- API methods depend inward on `_array_converter`.
++- `_array_converter` depends inward on NumPy shape utilities and the low-level wcslib callback (`func`).
++- Tests consume only public APIs and do not couple to internal state details.
++- No new external dependencies or outward dependency edges are introduced.
++
++## Structural completion check
++
++- Each obligation has at least one owning locus in implementation and one verification locus.
++- Empty-input contract is centralized to shared helper boundaries (`_array_converter` + `_return_list_of_arrays`) and fan-out to helper-path entrypoints.
++- Public API stability is explicitly preserved by delegating through existing methods and signatures.
++- Method state safety is maintained by avoiding state mutation in fast-path handling.
+diff --git a/astropy/wcs/WCSXFORM-003-architecture.md b/astropy/wcs/WCSXFORM-003-architecture.md
+new file mode 100644
+index 0000000..088a043
+--- /dev/null
++++ b/astropy/wcs/WCSXFORM-003-architecture.md
+@@ -0,0 +1,80 @@
++# WCSXFORM-003 Architecture Map: Preserve validation on mixed-empty axis-count/shape mismatches
++
++## Requirement traceability
++- `GUID: WCSXFORM-003` — Existing validation failures for axis-count/shape inconsistencies (including mixed emptiness across axes in alignment-required paths) must be preserved; no mixed-empty success branch is introduced.
++- `GUID: WCSXFORM-003` implementation checkpoints:
++  - Validation owner: `astropy/wcs/wcs.py`
++    - `_array_converter()` and `_return_list_of_arrays()` broadcast/error path.
++    - `wcs_pix2world()` delegation contract.
++    - `wcs_world2pix()` mixed-empty preservation contract.
++    - `all_world2pix()` alignment-path preservation contract.
++  - Verification owner: `astropy/wcs/tests/test_wcs.py`
++    - `WCSXFORM_003_VERIFICATION_MAP`
++    - `test_wcsxform_003_wcs_pix2world_axis_count_mismatch_with_empty_axis_raises_shape_validation`
++    - `test_wcsxform_003_wcs_world2pix_one_axis_empty_one_non_empty_preserves_malformed_shape_behavior`
++    - `test_wcsxform_003_all_world2pix_mixed_empty_non_empty_alignment_path_rejects_empty_success_branch`
++
++## Obligation → Architecture pressure map
++
++1. Preserve malformed axis-count/shape validation semantics
++- Type pressure: exception contract at normalization boundary.
++- Locus: `WCS._array_converter()` + `np.broadcast_arrays` in `_return_list_of_arrays()`.
++- Rule: do not create a new branch that converts mixed-size inputs into the zero-length success family; broadcasting/malformed-shape `ValueError` remains the canonical failure path.
++
++2. Mixed-empty must not trigger empty-success short-circuit
++- Type pressure: branch discrimination in shared helper.
++- Locus: `WCS._array_converter()` inner helper `_return_list_of_arrays()`.
++- Rule: only all-of-axes empty checks (`all(axis.size == 0 for axis in axes)`) are allowed to route to empty-output construction.
++
++3. Keep API method contracts and exception propagation intact
++- Type pressure: API boundary stability and behavior inheritance.
++- Loci:
++  - `WCS.wcs_pix2world()` delegator comments and return path.
++  - `WCS.wcs_world2pix()` delegator comments and return path.
++- Rule: maintain current conversion/type exceptions for `wcs_pix2world([], [1.0], 0)` and related inconsistent-axis invocations.
++
++4. Preserve alignment-required helper behavior under mixed emptiness
++- Type pressure: iterative path integration seam.
++- Locus: `WCS.all_world2pix()` pre-delegation alignment handling.
++- Rule: mixed empty/non-empty per-axis inputs remain in existing fail mode; do not add new zero-length fast-path there.
++
++## Placement and ownership
++
++- Primary owner: `astropy/wcs/wcs.py`
++  - `WCS._array_converter()` owns input normalization, broadcast checking, and empty/all-empty recognition.
++  - `_return_list_of_arrays()` owns shape alignment checks and per-axis output reconstruction.
++  - `WCS.wcs_pix2world()`, `WCS.wcs_world2pix()`, and `WCS.all_world2pix()` are structural entrypoints for this requirement class.
++- Verification owner: `astropy/wcs/tests/test_wcs.py`
++  - Holds all requirement-labeled obligations for `WCSXFORM-003` in one place.
++
++## Boundary and contract model
++
++- API boundary:
++  - Caller -> public method (`wcs_*` / `all_*`) -> `_array_converter` -> low-level wcslib callback.
++  - No new public signature or new public seam.
++
++- Domain boundary:
++  - `_array_converter` has exactly two legal input families and is responsible for deciding whether the empty fast path is legal.
++  - Empty success is allowed only for full-family emptiness; mixed emptiness stays in domain validation failure.
++
++- Error/empty contract boundary:
++  - Empty success contract: all required axes empty -> shaped empty return with unchanged family (per-axis or NxN).
++  - Mixed-empty/shape inconsistency contract: propagate current `ValueError`/`TypeError` behavior (including shape/broadcast mismatch messages).
++
++## Dependency direction
++
++- `wcs.py` public methods depend inward on `_array_converter` for all request family normalization and guard policy.
++- `_array_converter` depends inward on NumPy (`np.asarray`, `np.broadcast_arrays`) and inward wcslib callbacks (`func`).
++- Tests consume public API and remain decoupled from internal transformation details.
++
++## Integration-seam note
++
++- Seams to retain unchanged:
++  - `wcs.py` methods -> `_array_converter` seam remains the sole normalizing boundary.
++  - `_array_converter` -> wcslib callback seam (`func`) remains unchanged for non-all-empty valid inputs.
++
++## Structural completion check
++
++- All traced obligations are mapped to a owning locus in implementation and a verification locus in tests.
++- No new modules/interfaces were introduced; only boundary/branch ownership was clarified as explicit architecture.
++- Requirement behavior is represented as explicit contracts at helper/input-family boundaries with unchanged external API integration.
+diff --git a/astropy/wcs/WCSXFORM-004-architecture.md b/astropy/wcs/WCSXFORM-004-architecture.md
+new file mode 100644
+index 0000000..cbe1bf3
+--- /dev/null
++++ b/astropy/wcs/WCSXFORM-004-architecture.md
+@@ -0,0 +1,80 @@
++# WCSXFORM-004 Architecture Map: Preserve non-empty `wcs_pix2world` behavior after empty-input changes
++
++## Requirement traceability
++- `GUID: WCSXFORM-004` — Given valid non-empty `wcs_pix2world` inputs, output values, axis ordering, container type, and shapes must remain unchanged after empty-input handling changes.
++- `GUID: WCSXFORM-004` implementation checkpoints:
++  - Verification owner: `astropy/wcs/tests/test_wcs.py`
++    - `WCSXFORM_004_VERIFICATION_MAP`
++    - `test_wcsxform_004_wcs_pix2world_non_empty_inputs_preserve_axes_order_shape_and_container_type`
++    - `test_wcsxform_004_wcs_pix2world_mixed_scalar_list_array_outputs_remain_structurally_equivalent`
++  - Implementation owner: `astropy/wcs/wcs.py`
++    - `WCS._array_converter()` and nested helpers
++    - `WCS.wcs_pix2world()`
++    - `WCS._return_list_of_arrays()` / `WCS._return_single_array()` return-paths
++
++## Obligation → Architecture pressure map
++
++1. Preserve non-empty output value/axis semantics while allowing empty-input path only as a special-case branch.
++- Type pressure: route/normalization invariance.
++- Locus: `WCS._array_converter()` input-family dispatch.
++- Contract: branching by argument arity remains `2` vs `naxis + 1`, with no additional pre/post transforms for non-empty cases.
++
++2. Preserve axis ordering for list-of-axis return contracts.
++- Type pressure: output reconstruction contract at shared helper boundary.
++- Locus: `WCS._array_converter._return_list_of_arrays()`.
++- Contract: non-empty transformed data is emitted in output column order `output[:, i]` with `i = [0..naxis-1]`, reshaped to the broadcast input shape.
++
++3. Preserve return-container family for mixed scalar/list/array valid calls.
++- Type pressure: boundary/interface compatibility.
++- Locus: `WCS._array_converter._return_single_array()` and `WCS._array_converter()` branch conditions.
++- Contract: scalar or NxN path returns ndarray, per-axis path returns list-per-axis; no family conversion is introduced for non-empty calls.
++
++4. Keep API ownership and delegation boundary unchanged.
++- Type pressure: public seam stability.
++- Locus: `WCS.wcs_pix2world()`.
++- Contract: `wcs_pix2world` remains thin delegator into `_array_converter` and preserves callable identity to wcslib kernel path (`lambda xy, o: self.wcs.p2s(xy, o)['world']`).
++
++## Placement and ownership
++
++- Primary owner: `astropy/wcs/wcs.py`
++  - `WCS.wcs_pix2world()` is the public API boundary for this issue and owns method-level contract stability.
++  - `WCS._array_converter()` owns input-family recognition, non-empty route, and output reconstruction policy.
++  - `_return_list_of_arrays()` owns per-axis list output shape/order semantics.
++  - `_return_single_array()` owns NxN/packed-array return semantics.
++
++- Verification owner: `astropy/wcs/tests/test_wcs.py`
++  - Maintains `WCSXFORM_004_VERIFICATION_MAP` and the two `test_wcsxform_004_*` placeholders in lockstep with requirement language.
++
++## Boundary and contract model
++
++- API boundary: `caller -> wcs_pix2world -> _array_converter -> wcslib callback`.
++  - No public signature changes.
++  - No new parameters or return types.
++
++- Domain boundary:
++  - `_array_converter` supports two legal input families: `([N, naxis], origin)` and `(axis_0, ... axis_{naxis-1}, origin)`.
++  - Empty-fast-path contracts are allowed to skip wcslib, but only for fully-empty, non-mixed families (already enforced by existing helper logic).
++  - All other non-empty valid branches preserve the existing transform sequence.
++
++- Output-contract boundary:
++  - Per-axis path returns one object per axis in order.
++  - NxN path returns stacked ndarray.
++  - Empty-success handling must not alter these return-family decisions for valid non-empty calls.
++
++## Dependency direction
++
++- `wcs.py` public API (`wcs_pix2world`) depends inward on `_array_converter` for argument normalization and return-shape preservation.
++- `_array_converter` depends inward on NumPy broadcasting/array ops (`np.asarray`, `np.broadcast_arrays`, `hstack`) and the wcslib callback function passed in.
++- Verification file consumes only public API behavior and maps each obligation to implementation loci.
++
++## Integration seams
++
++- Retain and formalize the unchanged seam:
++  - `WCS.wcs_pix2world` -> `WCS._array_converter`.
++- Constrain behavior changes to this issue at the contract boundary only when processing empty inputs; keep non-empty call chain fully unchanged.
++
++## Structural completion check
++
++- Every `WCSXFORM-004` obligation is mapped to both a verification locus and implementation locus.
++- Requirement is represented via explicit output-family, axis-order, and delegation contracts.
++- At least one concrete architecture artifact has been created and remains structurally focused on placement, boundaries, and dependencies.
+diff --git a/astropy/wcs/WCSXFORM-005-architecture.md b/astropy/wcs/WCSXFORM-005-architecture.md
+new file mode 100644
+index 0000000..912c95b
+--- /dev/null
++++ b/astropy/wcs/WCSXFORM-005-architecture.md
+@@ -0,0 +1,87 @@
++# WCSXFORM-005 Architecture Map: Preserve malformed non-empty error behavior for `wcs_pix2world` and same-path peers
++
++## Requirement traceability
++- `GUID: WCSXFORM-005` — Given malformed or invalid non-empty inputs for `wcs_pix2world` and same-path peer methods, pre-existing exception classes/messages must be preserved and must not be masked by new empty-input handling.
++- `GUID: WCSXFORM-005` implementation checkpoints:
++  - Verification owner: `astropy/wcs/tests/test_wcs.py`
++    - `WCSXFORM_005_VERIFICATION_MAP`
++    - `test_wcsxform_005_wcs_pix2world_malformed_non_empty_payload_preserves_legacy_error`
++    - `test_wcsxform_005_same_path_peer_world2pix_malformed_non_empty_payload_preserves_legacy_error`
++    - `test_wcsxform_005_empty_and_malformed_non_empty_branches_are_disjoint`
++  - Implementation owner: `astropy/wcs/wcs.py`
++    - `WCS._array_converter()` (shared normalization and branch routing)
++    - `WCS._array_converter._return_list_of_arrays()` (mixed-emptiness classification and ValueError continuation path)
++    - `WCS.wcs_pix2world()`
++    - `WCS.wcs_world2pix()`
++    - `WCS.all_pix2world()`
++    - `WCS.all_world2pix()`
++
++## Obligation → Architecture pressure map
++
++1. Preserve malformed non-empty `wcs_pix2world` exception contract
++- Type pressure: input validation and exception boundary.
++- Locus: `WCS._array_converter()` / `WCS._array_converter._return_list_of_arrays()`, then `WCS.wcs_pix2world()`.
++- Contract: malformed non-empty payloads must stay on the existing non-empty control path and flow into existing casting/broadcast/wcslib behavior; no added pre-validation branch in `wcs_pix2world()`.
++
++2. Preserve malformed non-empty behavior for same-path peer transforms
++- Type pressure: peer-path parity at shared boundary.
++- Loci:
++  - `WCS.wcs_world2pix()`
++  - `WCS.all_pix2world()`
++  - `WCS.all_world2pix()`
++  - `WCS._array_converter()`
++- Contract: all peers continue to delegate malformed inputs through the same `_array_converter` branching and callback seam; no empty-input remapping occurs for non-empty malformed structures.
++
++3. Keep empty-input success disjoint from malformed non-empty failure
++- Type pressure: boundary decision rule in shared helper.
++- Locus: `WCS._array_converter._return_list_of_arrays()` and `_return_single_array()`.
++- Contract:
++  - Empty-success branch is only for true all-axis-empty normalized inputs.
++  - Partial/mixed emptiness remains on existing mismatch/error route.
++  - Existing exception class/message for malformed mixed shapes remains unchanged.
++
++## Placement and ownership
++
++- Primary owner: `astropy/wcs/wcs.py`
++  - `WCS._array_converter()` owns input-family normalization and branch discrimination between:
++    - fully-empty fast-path and
++    - malformed/non-empty or malformed-mixed path.
++  - `_return_list_of_arrays()` owns mixed-emptiness invalidity detection and preserves broadcast-origin errors for malformed families.
++  - Public methods (`wcs_pix2world`, `wcs_world2pix`, `all_pix2world`, `all_world2pix`) are API boundaries and preserve current callback identity to wcslib kernels.
++- Verification owner: `astropy/wcs/tests/test_wcs.py`
++  - Holds WCSXFORM-005 requirements in `WCSXFORM_005_VERIFICATION_MAP` and three dedicated placeholder tests.
++
++## Boundary and contract model
++
++- API boundary:
++  - `caller -> public WCS method (wcs_pix2world/wcs_world2pix/all_pix2world/all_world2pix) -> WCS._array_converter -> wcslib callback`.
++  - No signature changes and no new seams; only behavior discipline at existing shared seam.
++
++- Domain boundary:
++  - `_array_converter` remains the sole entry point for axis-family normalizing logic and empty detection.
++  - Empty-fast-path can produce zero-length outputs only after all required axes are empty after normalization.
++  - Malformed non-empty inputs continue through current validation/type/broadcast path and preserve class/message.
++
++- Error contract boundary:
++  - Malformed mixed input family: propagate existing `ValueError`/`TypeError` patterns generated by numpy coercion/broadcasting and wcslib path.
++  - Empty contract: produce zero-row/empty-axis outputs via existing return-family rules.
++
++## Dependency direction
++
++- Public methods depend inward on `_array_converter` for all input-family branching.
++- `_array_converter` depends inward on NumPy normalization (`np.asarray`, `np.broadcast_arrays`) and wcslib callbacks (`self.wcs.p2s`, `self.wcs.s2p`, `_all_pix2world`, `_all_world2pix` wrappers).
++- Tests consume public API only and do not depend on private internals beyond documented behavior in traces.
++
++## Integration seams
++
++- Retain unchanged public seam:
++  - `wcs.*` methods -> `_array_converter`.
++- Retain unchanged kernel seam:
++  - `func` callback arguments to `_array_converter`.
++- Do not add new peer-specific conversion seams for malformed input; all peers continue through existing callback route.
++
++## Structural completion check
++
++- Every WCSXFORM-005 obligation has a mapped verification locus and owning implementation locus.
++- The map preserves explicit branch ownership for exception class/message preservation, peer-path parity, and empty/malformed separation.
++- At least one architecture artifact has been created and remains structurally focused on placement, boundaries, dependencies, and seam contracts.
+diff --git a/astropy/wcs/WCSXFORM-006-architecture.md b/astropy/wcs/WCSXFORM-006-architecture.md
+new file mode 100644
+index 0000000..fe82f4a
+--- /dev/null
++++ b/astropy/wcs/WCSXFORM-006-architecture.md
+@@ -0,0 +1,68 @@
++# WCSXFORM-006 Architecture Map: Repeated empty-input calls are stable and side-effect free
++
++## Requirement traceability
++- `GUID: WCSXFORM-006` — Given valid `WCS` instances, repeated empty-input transform invocations must remain independent, emit empty outputs, and avoid stateful side effects that affect later non-empty work.
++- `GUID: WCSXFORM-006` implementation checkpoints:
++  - Verification owner: `astropy/wcs/tests/test_wcs.py`
++    - `WCSXFORM_006_VERIFICATION_MAP`
++    - `test_wcsxform_006_wcs_pix2world_repeated_empty_inputs_remain_empty_and_state_free`
++    - `test_wcsxform_006_empty_nonempty_empty_sequence_keeps_contract_on_one_instance`
++    - `test_wcsxform_006_equivalent_fresh_wcs_instances_preserve_empty_nonempty_empty_contract`
++  - Implementation owner: `astropy/wcs/wcs.py`
++    - `WCS._array_converter()` and nested `_return_list_of_arrays()`
++    - `WCS.wcs_pix2world()`
++    - `WCS.wcs_world2pix()`
++    - `WCS.all_pix2world()`
++    - `WCS.all_world2pix()`
++
++## Requirement-to-architecture pressure map
++
++1. Repeated empty-input stability on same instance
++- Type pressure: re-entrancy and local-state boundary in shared converter seam.
++- Locus: `WCS._array_converter` plus `WCS._array_converter._return_list_of_arrays()`.
++- Constraint: all-axis-empty paths must always be computed from current normalized `axis.size` and must not read or write call-history.
++- Contract: each call returns zero-length outputs per axis family, with `np.empty(axis.shape, dtype=float)`-equivalent semantics.
++
++2. Empty -> non-empty -> empty sequence determinism on same instance
++- Type pressure: API boundary sequencing under mixed call phases.
++- Locus: `WCS.wcs_pix2world()`, `WCS._array_converter`.
++- Constraint: method-level guards stay unchanged; every invocation delegates to `_array_converter`, and only non-empty calls reach wcslib callback path.
++- Contract: empty-success branch and normal transform branch are mutually exclusive based on current inputs, so middle non-empty call remains unaffected by prior empty invocation.
++
++3. Fresh instance equivalence with identical execution sequence
++- Type pressure: peer-path parity and construction-independent behavior.
++- Locus: `WCS.wcs_pix2world()`, `WCS.wcs_world2pix()`, `WCS.all_pix2world()`, `WCS.all_world2pix()`.
++- Constraint: all peer transforms share the same `_array_converter` empty-vs-non-empty branching, so behavior is instance-local and not object-history-dependent.
++- Contract: equivalent WCS construction should yield equivalent outputs/error behavior in repeated empty/non-empty/empty sequences.
++
++## Placement and ownership
++- Primary owner for sequence control and branch purity: `astropy/wcs/wcs.py`.
++- Structural API owner for the requirement: `WCS.wcs_pix2world()` (baseline contract).
++- Shared helper owner for branch legality and contract shape: `WCS._array_converter()`.
++- Return-shape owner for all-empty fast-path output construction: `WCS._array_converter._return_list_of_arrays()`.
++- Cross-path parity owner: `WCS.wcs_world2pix()`, `WCS.all_pix2world()`, `WCS.all_world2pix()` via existing shared helper invocation.
++- Verification owner: `astropy/wcs/tests/test_wcs.py`, with placeholders in `WCSXFORM_006_VERIFICATION_MAP`.
++
++## Boundary and contract model
++- API boundary: caller → public WCS method (`wcs_pix2world`, `wcs_world2pix`, `all_pix2world`, `all_world2pix`) → `_array_converter` → callback seam.
++- `_array_converter` boundary: branch into empty path only when all normalized required axes are empty; mixed non-empty/mixed-empty inputs continue on validation/error or non-empty transform flow.
++- No-cache boundary: no mutable per-call cache, sticky flag, or memoization object is owned in this path; any future stateful mechanism must be introduced through a new module and explicit dependency contract, which is out of scope here.
++- Return boundary: all-empty branch returns per-axis family outputs as requested form; no container-type conversion is introduced.
++
++## Dependency-direction notes
++- Public WCS methods depend inward on `_array_converter` for argument normalization, branch choice, and output reconstruction.
++- `_array_converter` depends inward on:
++  - NumPy normalization and broadcast primitives (`np.asarray`, `np.broadcast_arrays`, `np.hstack`, `np.empty`)
++  - The callback passed by each public method (`p2s`, `s2p`, `_all_pix2world`, `_all_world2pix`)
++- `test_wcs.py` depends outward-only on public API behavior and maps obligations to method/internal loci.
++
++## Integration-seam skeletons
++- Keep seam `wcs_*` method → `_array_converter` unchanged in signature and invocation contract.
++- Keep callback seam (`func(xy, origin)` identity) unchanged for non-empty execution path.
++- Keep error/empty-branch seam in `_return_list_of_arrays` as the only legal branch where empty inputs bypass wcslib callbacks.
++- Preserve peer symmetry by ensuring all four public transform entrypoints remain on identical branch-selection infrastructure.
++
++## Structural completion check
++- All three WCSXFORM-006 obligations are mapped to at least one owning locus in implementation and one verification locus.
++- No new modules or public contracts were introduced.
++- This is a concrete architecture artifact that explicitly defines ownership, boundaries, dependency direction, and seam constraints for stable repeated empty-input behavior.
+diff --git a/astropy/wcs/tests/test_wcs.py b/astropy/wcs/tests/test_wcs.py
+index 85853e1..13bcdc2 100644
+--- a/astropy/wcs/tests/test_wcs.py
++++ b/astropy/wcs/tests/test_wcs.py
+@@ -219,6 +219,483 @@ def test_3d_shapes():
+         assert len(result) == 3
+ 
+ 
++def test_wcsxform_001_returns_empty_family_for_list_inputs_origin_0():
++    """
++    WCSXFORM-001
++    Verify empty per-axis return family when all required axes are empty.
++    """
++    w = wcs.WCS(naxis=2)
++    x, y = w.wcs_pix2world([], [], 0)
++    assert len(x) == 0
++    assert len(y) == 0
++    assert x.shape == (0,)
++    assert y.shape == (0,)
++
++
++def test_wcsxform_001_returns_empty_family_for_list_inputs_origin_1():
++    """
++    WCSXFORM-001
++    Verify empty per-axis return family when all required axes are empty.
++    """
++    w = wcs.WCS(naxis=2)
++    x, y = w.wcs_pix2world([], [], 1)
++    assert len(x) == 0
++    assert len(y) == 0
++    assert x.shape == (0,)
++    assert y.shape == (0,)
++
++
++def test_wcsxform_001_returns_empty_family_for_numpy_empty_axes_origin_0():
++    """
++    WCSXFORM-001
++    Verify empty per-axis return family when all required axes are zero-length.
++    """
++    w = wcs.WCS(naxis=2)
++    x = np.array([])
++    y = np.array([])
++    xw, yw = w.wcs_pix2world(x, y, 0)
++    assert len(xw) == 0
++    assert len(yw) == 0
++    assert xw.shape == x.shape
++    assert yw.shape == y.shape
++
++
++def test_wcsxform_002_wcs_world2pix_empty_required_axes_return_zero_length_without_axis_errors():
++    """
++    WCSXFORM-002
++    Obligation: When helper-path helper `wcs_world2pix` receives empty inputs for all
++    required axes, the contract must allow zero-length outputs and avoid axis-type
++    inconsistency failures.
++    """
++    w = wcs.WCS(naxis=2)
++    x, y = w.wcs_world2pix([], [], 1)
++
++    assert x.shape == (0,)
++    assert y.shape == (0,)
++    assert x.size == 0
++    assert y.size == 0
++
++
++def test_wcsxform_002_all_world2pix_empty_3axis_inputs_return_empty_family():
++    """
++    WCSXFORM-002
++    Obligation: For helper-path transforms with three required axes, all three empty
++    axis inputs must map to zero-length outputs across every returned axis axis.
++    """
++    w = wcs.WCS(naxis=3)
++    a, b, c = w.all_world2pix([], [], [], 1)
++
++    assert len(a) == 0
++    assert len(b) == 0
++    assert len(c) == 0
++    assert a.shape == (0,)
++    assert b.shape == (0,)
++    assert c.shape == (0,)
++
++
++def test_wcsxform_002_wcs_world2pix_empty_then_non_empty_keeps_contract():
++    """
++    WCSXFORM-002
++    Obligation: The empty-input contract and the standard non-empty behavior remain
++    independently valid when called on the same WCS instance in sequence.
++    """
++    w = wcs.WCS(naxis=2)
++    x_empty, y_empty = w.wcs_world2pix([], [], 1)
++    assert x_empty.shape == (0,)
++    assert y_empty.shape == (0,)
++
++    x, y = w.wcs_world2pix([1.0, 2.0], [3.0, 4.0], 1)
++    assert x.shape == (2,)
++    assert y.shape == (2,)
++    assert np.isfinite(x).all()
++    assert np.isfinite(y).all()
++
++
++WCSXFORM_003_VERIFICATION_MAP = [
++    {
++        "requirement_id": "WCSXFORM-003",
++        "obligation": (
++            "existing validation must be preserved for axis-count/shape inconsistencies "
++            "when empty inputs are mixed with non-empty inputs in array-based transform paths"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_003_wcs_pix2world_axis_count_mismatch_with_empty_axis_raises_shape_validation",
++            "test_wcsxform_003_wcs_world2pix_one_axis_empty_one_non_empty_preserves_malformed_shape_behavior",
++            "test_wcsxform_003_all_world2pix_mixed_empty_non_empty_alignment_path_rejects_empty_success_branch",
++        ],
++    },
++]
++
++
++WCSXFORM_004_VERIFICATION_MAP = [
++    {
++        "requirement_id": "WCSXFORM-004",
++        "obligation": (
++            "for valid non-empty inputs, `wcs_pix2world` must preserve output values, axis "
++            "ordering, return container type, and shape exactly as before an empty-input change"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_004_wcs_pix2world_non_empty_inputs_preserve_axes_order_shape_and_container_type",
++        ],
++    },
++    {
++        "requirement_id": "WCSXFORM-004",
++        "obligation": (
++            "for valid mixed scalar/list/array inputs, `wcs_pix2world` must remain "
++            "functionally indistinguishable in output content and structure across contract shifts"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_004_wcs_pix2world_mixed_scalar_list_array_outputs_remain_structurally_equivalent",
++        ],
++    },
++]
++
++
++WCSXFORM_005_VERIFICATION_MAP = [
++    {
++        "requirement_id": "WCSXFORM-005",
++        "obligation": (
++            "preserve historical malformed-input exception class and message for "
++            "`wcs_pix2world` when malformed payloads are non-empty"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_005_wcs_pix2world_malformed_non_empty_payload_preserves_legacy_error",
++        ],
++    },
++    {
++        "requirement_id": "WCSXFORM-005",
++        "obligation": (
++            "preserve malformed non-empty validation errors for same-path peer transforms "
++            "instead of remapping through empty-input branches"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_005_same_path_peer_world2pix_malformed_non_empty_payload_preserves_legacy_error",
++        ],
++    },
++    {
++        "requirement_id": "WCSXFORM-005",
++        "obligation": (
++            "ensure malformed non-empty error branches remain independent from empty-input "
++            "success branches in the same test locus"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_005_empty_and_malformed_non_empty_branches_are_disjoint",
++        ],
++    },
++]
++
++
++WCSXFORM_006_VERIFICATION_MAP = [
++    {
++        "requirement_id": "WCSXFORM-006",
++        "obligation": (
++            "repeated empty-input `wcs_pix2world` invocations must each return empty per-axis "
++            "outputs and must not introduce instance-level state drift across invocations"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_006_wcs_pix2world_repeated_empty_inputs_remain_empty_and_state_free",
++        ],
++    },
++    {
++        "requirement_id": "WCSXFORM-006",
++        "obligation": (
++            "the sequence empty->non-empty->empty must preserve expected non-empty behavior and "
++            "empty-output semantics on the same instance"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_006_empty_nonempty_empty_sequence_keeps_contract_on_one_instance",
++        ],
++    },
++    {
++        "requirement_id": "WCSXFORM-006",
++        "obligation": (
++            "fresh equivalent `WCS` instances should produce equivalent empty/non-empty/empty sequences "
++            "without divergence in outputs or error behavior"
++        ),
++        "verification_artifacts": [
++            "test_wcsxform_006_equivalent_fresh_wcs_instances_preserve_empty_nonempty_empty_contract",
++        ],
++    },
++]
++
++
++def test_wcsxform_006_wcs_pix2world_repeated_empty_inputs_remain_empty_and_state_free():
++    """
++    WCSXFORM-006
++    Obligation: repeated empty-input invocations on the same `WCS` instance must remain
++    empty-output contracts with no mutation-based drift.
++    """
++    w = wcs.WCS(naxis=2)
++
++    result_1 = w.wcs_pix2world([], [], 0)
++    result_2 = w.wcs_pix2world([], [], 0)
++
++    assert isinstance(result_1, list)
++    assert isinstance(result_2, list)
++    assert len(result_1) == 2
++    assert len(result_2) == 2
++    assert result_1[0].shape == (0,)
++    assert result_1[1].shape == (0,)
++    assert result_2[0].shape == (0,)
++    assert result_2[1].shape == (0,)
++    assert_allclose(result_1[0], np.array([]))
++    assert_allclose(result_1[1], np.array([]))
++    assert_allclose(result_2[0], np.array([]))
++    assert_allclose(result_2[1], np.array([]))
++
++
++def test_wcsxform_006_empty_nonempty_empty_sequence_keeps_contract_on_one_instance():
++    """
++    WCSXFORM-006
++    Obligation: in an empty -> non-empty -> empty call sequence on the same `WCS` instance,
++    the non-empty transform remains valid and both empties remain empty-output.
++    """
++    w = wcs.WCS(naxis=2)
++
++    before_empty = w.wcs_pix2world([], [], 0)
++    assert isinstance(before_empty, list)
++    assert before_empty[0].shape == (0,)
++    assert before_empty[1].shape == (0,)
++
++    nonempty = w.wcs_pix2world([1.0, 2.0, 3.0], [4.0, 5.0, 6.0], 0)
++    assert isinstance(nonempty, list)
++    assert len(nonempty) == 2
++    assert nonempty[0].shape == (3,)
++    assert nonempty[1].shape == (3,)
++    assert np.isfinite(nonempty[0]).all()
++    assert np.isfinite(nonempty[1]).all()
++
++    after_empty = w.wcs_pix2world([], [], 0)
++    assert isinstance(after_empty, list)
++    assert after_empty[0].shape == (0,)
++    assert after_empty[1].shape == (0,)
++
++    expected = wcs.WCS(naxis=2)
++    expected_nonempty = expected.wcs_pix2world([1.0, 2.0, 3.0], [4.0, 5.0, 6.0], 0)
++    assert_allclose(nonempty[0], expected_nonempty[0])
++    assert_allclose(nonempty[1], expected_nonempty[1])
++
++
++def test_wcsxform_006_equivalent_fresh_wcs_instances_preserve_empty_nonempty_empty_contract():
++    """
++    WCSXFORM-006
++    Obligation: equivalent fresh instances must preserve outputs and error behavior across repeated
++    empty/non-empty/empty execution sequences.
++    """
++    w_ref = wcs.WCS(naxis=2)
++    w_fresh = wcs.WCS(naxis=2)
++
++    ref_empty_1 = w_ref.wcs_pix2world([], [], 1)
++    ref_nonempty = w_ref.wcs_pix2world([7.0, 8.0, 9.0], [10.0, 11.0, 12.0], 1)
++    ref_empty_2 = w_ref.wcs_pix2world([], [], 1)
++
++    fresh_empty_1 = w_fresh.wcs_pix2world([], [], 1)
++    fresh_nonempty = w_fresh.wcs_pix2world([7.0, 8.0, 9.0], [10.0, 11.0, 12.0], 1)
++    fresh_empty_2 = w_fresh.wcs_pix2world([], [], 1)
++
++    assert isinstance(ref_empty_1, list)
++    assert isinstance(ref_empty_2, list)
++    assert ref_empty_1[0].shape == (0,)
++    assert ref_empty_1[1].shape == (0,)
++    assert ref_empty_2[0].shape == (0,)
++    assert ref_empty_2[1].shape == (0,)
++    assert isinstance(fresh_empty_1, list)
++    assert isinstance(fresh_empty_2, list)
++    assert fresh_empty_1[0].shape == (0,)
++    assert fresh_empty_1[1].shape == (0,)
++    assert fresh_empty_2[0].shape == (0,)
++    assert fresh_empty_2[1].shape == (0,)
++
++    assert_allclose(ref_nonempty[0], fresh_nonempty[0])
++    assert_allclose(ref_nonempty[1], fresh_nonempty[1])
++    assert ref_empty_1[0].shape == fresh_empty_1[0].shape
++    assert ref_empty_1[1].shape == fresh_empty_1[1].shape
++    assert ref_empty_2[0].shape == fresh_empty_2[0].shape
++    assert ref_empty_2[1].shape == fresh_empty_2[1].shape
++
++    with pytest.raises(ValueError) as exc_ref:
++        w_ref.wcs_pix2world([10.0, 11.0, 12.0], [1.0, 2.0], 1)
++    with pytest.raises(ValueError) as exc_fresh:
++        w_fresh.wcs_pix2world([10.0, 11.0, 12.0], [1.0, 2.0], 1)
++
++    assert exc_ref.value.args[0] == exc_fresh.value.args[0]
++
++
++def test_wcsxform_004_wcs_pix2world_non_empty_inputs_preserve_axes_order_shape_and_container_type():
++    """
++    WCSXFORM-004
++    Obligation: enforce traceability for non-empty `wcs_pix2world` calls (scalar/list/array)
++    that must retain axis order, return type, and shape after empty-input handling changes.
++    """
++    w = wcs.WCS(naxis=2)
++    origin = 1
++
++    x_scalar = 11.0
++    y_scalar = 12.0
++    scalar_world = w.wcs_pix2world(x_scalar, y_scalar, origin)
++    assert isinstance(scalar_world, list)
++    assert len(scalar_world) == 2
++
++    x = np.array([[1.0, 2.0], [3.0, 4.0]])
++    y = np.array([[5.0, 6.0], [7.0, 8.0]])
++    list_world = w.wcs_pix2world(x, y, origin)
++    assert isinstance(list_world, list)
++    assert len(list_world) == 2
++    assert list_world[0].shape == x.shape
++    assert list_world[1].shape == y.shape
++
++    scalar_reference = w.wcs_pix2world(np.array([[x_scalar, y_scalar]]), origin)
++    packed_input = np.column_stack([x.ravel(), y.ravel()])
++    packed_world = w.wcs_pix2world(packed_input, origin)
++
++    assert_allclose(scalar_world[0], scalar_reference[:, 0])
++    assert_allclose(scalar_world[1], scalar_reference[:, 1])
++    assert_allclose(list_world[0], packed_world[:, 0].reshape(x.shape))
++    assert_allclose(list_world[1], packed_world[:, 1].reshape(y.shape))
++
++    assert scalar_world[0].shape == (1,)
++    assert scalar_world[1].shape == (1,)
++
++
++def test_wcsxform_004_wcs_pix2world_mixed_scalar_list_array_outputs_remain_structurally_equivalent():
++    """
++    WCSXFORM-004
++    Obligation: trace the mixed-container non-empty behavior contract (`scalar`, `list`,
++    and `array` variants) as a non-regressing baseline across the change.
++    """
++    w = wcs.WCS(naxis=2)
++    origin = 0
++
++    scalar = 2.0
++    list_coords = [10.0, 11.0, 12.0]
++    array_coords = np.array(list_coords, dtype=float)
++    scalar_list = w.wcs_pix2world(scalar, list_coords, origin)
++    list_array = w.wcs_pix2world([scalar] * len(list_coords), array_coords, origin)
++    array_scalar = w.wcs_pix2world(np.array([scalar] * len(list_coords)), scalar, origin)
++    reference = w.wcs_pix2world(np.array([scalar] * len(list_coords)), array_coords, origin)
++
++    for outputs in (scalar_list, list_array, array_scalar, reference):
++        assert isinstance(outputs, list)
++        assert len(outputs) == 2
++        assert outputs[0].shape == (len(list_coords),)
++        assert outputs[1].shape == (len(list_coords),)
++
++    assert_allclose(scalar_list[0], list_array[0])
++    assert_allclose(scalar_list[1], list_array[1])
++    assert_allclose(scalar_list[0], array_scalar[0])
++    assert_allclose(scalar_list[1], array_scalar[1])
++    assert_allclose(scalar_list[0], reference[0])
++    assert_allclose(scalar_list[1], reference[1])
++
++
++def test_wcsxform_005_wcs_pix2world_malformed_non_empty_payload_preserves_legacy_error():
++    """
++    WCSXFORM-005
++    Obligation: malformed non-empty `wcs_pix2world` inputs must keep legacy exception
++    class/message behavior and must not be treated as empty-input success paths.
++    """
++    w = wcs.WCS(naxis=2)
++
++    with pytest.raises(ValueError) as exc:
++        w.wcs_pix2world([10.0, 11.0, 12.0], [1.0, 2.0], 0)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++
++def test_wcsxform_005_same_path_peer_world2pix_malformed_non_empty_payload_preserves_legacy_error():
++    """
++    WCSXFORM-005
++    Obligation: malformed non-empty payloads to same-path peers must preserve existing
++    validation behavior instead of being masked by empty-input handling.
++    """
++    w = wcs.WCS(naxis=2)
++
++    with pytest.raises(ValueError) as exc:
++        w.wcs_world2pix([10.0, 11.0, 12.0], [1.0, 2.0], 1)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++    with pytest.raises(ValueError) as exc:
++        w.all_world2pix([10.0, 11.0, 12.0], [1.0, 2.0], 1)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++
++def test_wcsxform_005_empty_and_malformed_non_empty_branches_are_disjoint():
++    """
++    WCSXFORM-005
++    Obligation: when both branches are exercised separately, only empty-input malformed
++    should succeed with zero-length output; malformed non-empty inputs should fail.
++    """
++    w = wcs.WCS(naxis=2)
++
++    empty_pix2world = w.wcs_pix2world([], [], 0)
++    assert isinstance(empty_pix2world, list)
++    assert len(empty_pix2world) == 2
++    assert empty_pix2world[0].shape == (0,)
++    assert empty_pix2world[1].shape == (0,)
++
++    with pytest.raises(ValueError) as exc:
++        w.wcs_pix2world([10.0, 11.0, 12.0], [1.0, 2.0], 0)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++    empty_world2pix = w.wcs_world2pix([], [], 1)
++    assert isinstance(empty_world2pix, list)
++    assert len(empty_world2pix) == 2
++    assert empty_world2pix[0].shape == (0,)
++    assert empty_world2pix[1].shape == (0,)
++
++    with pytest.raises(ValueError) as exc:
++        w.wcs_world2pix([10.0, 11.0], [1.0, 2.0, 3.0], 1)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++    empty_all_world2pix = w.all_world2pix([], [], 1)
++    assert isinstance(empty_all_world2pix, list)
++    assert len(empty_all_world2pix) == 2
++    assert empty_all_world2pix[0].shape == (0,)
++    assert empty_all_world2pix[1].shape == (0,)
++
++    with pytest.raises(ValueError) as exc:
++        w.all_world2pix([10.0, 11.0], [1.0, 2.0, 3.0], 1)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++
++def test_wcsxform_003_wcs_pix2world_axis_count_mismatch_with_empty_axis_raises_shape_validation():
++    """
++    WCSXFORM-003
++    obligation: preserve existing validation for mixed empty/non-empty axis inputs in
++    `wcs_pix2world`, including the `wcs_pix2world([], [1.0], 0)` shape-mismatch class.
++    """
++    w = wcs.WCS(naxis=2)
++
++    with pytest.raises(ValueError) as exc:
++        w.wcs_pix2world([], [1.0], 0)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++
++def test_wcsxform_003_wcs_world2pix_one_axis_empty_one_non_empty_preserves_malformed_shape_behavior():
++    """
++    WCSXFORM-003
++    obligation: preserve existing validation behavior for helper-path transforms requiring
++    2 axes when one axis is empty and the other is non-empty.
++    """
++    w = wcs.WCS(naxis=2)
++
++    with pytest.raises(ValueError) as exc:
++        w.wcs_world2pix([], [1.0], 1)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++
++def test_wcsxform_003_all_world2pix_mixed_empty_non_empty_alignment_path_rejects_empty_success_branch():
++    """
++    WCSXFORM-003
++    obligation: preserve alignment-required failure mode for mixed empty/non-empty inputs and
++    avoid introducing empty-input success semantics.
++    """
++    w = wcs.WCS(naxis=3)
++
++    with pytest.raises(ValueError) as exc:
++        w.all_world2pix([], [], [1.0], 1)
++    assert exc.value.args[0] == "Coordinate arrays are not broadcastable to each other"
++
++
+ def test_preserve_shape():
+     w = wcs.WCS(naxis=2)
+ 
+diff --git a/astropy/wcs/wcs.py b/astropy/wcs/wcs.py
+index d3a06f2..e4b1832 100644
+--- a/astropy/wcs/wcs.py
++++ b/astropy/wcs/wcs.py
+@@ -1210,14 +1210,107 @@ reduce these to 2 dimensions using the naxis kwarg.
+         A helper function to support reading either a pair of arrays
+         or a single Nx2 array.
+         """
++        # [GUID: WCSXFORM-001]
++        # Logic obligation:
++        # 1) Normalize caller inputs into one of two legal families:
++        #    a) single NxN array + origin, or b) one array per axis + origin.
++        # 2) Preserve existing return-family semantics for empty inputs:
++        #    - NxN input: return zero-row NxN transformed array.
++        #    - Per-axis input: return one empty array per required axis.
++        # 3) For fully-empty per-axis inputs only when all required axes are empty:
++        #    - detect zero-length after coercion and broadcasting checks;
++        #    - bypass low-level WCS kernel call to avoid axis-type conversion path.
++        # 4) On empty detection, short-circuit with a successful empty output
++        #    shaped to the requested family and return.
++        # 5) On non-empty input, use current conversion + WCS call flow unchanged.
++        # 6) Preserve existing exceptions (ValueError/TypeError/inconsistent axis
++        #    errors) for malformed/mismatched/partially-empty input as currently.
++        # [GUID: WCSXFORM-002]
++        # Logic obligations for empty required-axis contract:
++        # O1 (Obligation 1): if required axes are all empty and no scalar axis is mixed
++        #    with non-empty axes, return zero-length outputs (per-axis list or NxN)
++        #    before any wcslib transform call; no InconsistentAxisTypesError emitted.
++        # O2 (Obligation 2): this path applies to all callers sharing this helper,
++        #    including 3-axis helper-path transforms that pass axis arrays through
++        #    the len(args)==naxis+1 branch.
++        # O3 (Obligation 3): do not mutate WCS object state on empty input; all
++        #    branches are pure and must leave subsequent non-empty invocations
++        #    unaffected.
++        # [GUID: WCSXFORM-003]
++        # Validation-preservation obligations for mixed-empty inputs:
++        # V1: For per-axis path (len(args)==naxis+1), normalize args -> np.asarray and
++        #     int(origin) before shape alignment; any broadcast TypeError/ValueError behavior
++        #     must remain existing.
++        # V2: Broadcast alignment is the gatekeeper for mixed emptiness:
++        #     - all(axis.size == 0) => explicit empty-success branch,
++        #     - partial emptiness or size mismatch => let existing broadcast ValueError
++        #       ("Coordinate arrays are not broadcastable to each other") propagate.
++        # V3: Never branch to the all-empty optimization on partially-empty axes;
++        #     mixed-empty inputs must not produce success even when one axis is zero-length.
++        # V4: Empty behavior is local (return-family shape) and must not alter exception
++        #     type/message semantics expected by legacy malformed-shape callers.
++        # [GUID: WCSXFORM-004]
++        # Non-empty regression obligation:
++        # O1: Preserve non-empty output contracts exactly:
++        #     - input branch selection stays based on `len(args)` and shape checks only.
++        #     - for len(args) == 2, transformation result is forwarded as-is after
++        #       optional sky normalization; no axis-reordering or return-shape edits.
++        #     - for len(args) == naxis + 1, output columns are emitted in axis index order:
++        #       output[:, i] for i in [0..naxis-1], then reshaped to the aligned broadcast shape.
++        # O2: Preserve container family and axis-order invariants under mixed valid signatures:
++        #     - scalar signature → ndarray result path.
++        #     - per-axis signature → list of per-axis arrays, no tuple/ndarray substitution.
++        #     - NxN signature → ndarray with unchanged `(N, naxis)` structure.
++        # O3: Only empty-input short-circuits are allowed to alter control flow;
++        #     all non-empty calls must execute the same conversion + transform + reshape
++        #     sequence as pre-fix behavior.
++        # [GUID: WCSXFORM-005]
++        # Malformed-non-empty preservation:
++        # M1: preserve all legacy exception class/message behavior for malformed payloads.
++        # M2: all-empty short-circuit is only valid after broadcast normalization when all
++        #     required axes are empty.
++        # M3: partial-emptiness is not empty-input success; it must preserve mismatch errors.
++        # [GUID: WCSXFORM-006]
++        # Deterministic re-entrancy obligations:
++        # R1: repeated all-empty input on a valid WCS must enter the same empty-output branch
++        #     each call and emit one output container per required axis with zero-length shape.
++        # R2: no observable per-call artifact (cache, flag, mutation) may be set in this helper
++        #     so a subsequent non-empty invocation follows the same non-empty branch and data path.
++        # R3: branch selection is purely a function of current args/origin normalization state and
++        #     does not depend on prior call history.
+ 
+         def _return_list_of_arrays(axes, origin):
+             try:
++                original_sizes = [axis.size for axis in axes]
+                 axes = np.broadcast_arrays(*axes)
+             except ValueError:
+                 raise ValueError(
+                     "Coordinate arrays are not broadcastable to each other")
+ 
++            # [GUID: WCSXFORM-005]
++            # Failure path:
++            # - if one or more axes are empty and one or more axes are non-empty,
++            #   this is malformed mixed input and must raise legacy broadcast ValueError.
++            if any(size == 0 for size in original_sizes) and \
++               any(size > 0 for size in original_sizes):
++                raise ValueError(
++                    "Coordinate arrays are not broadcastable to each other")
++
++            # [GUID: WCSXFORM-006][R1]
++            # Empty-input replayable state-transition:
++            # - PRE: original_sizes captured after axis normalization.
++            # - GUARD: all(axis.size == 0 for axis in axes) true.
++            # - ACTION: construct and return empty outputs with per-axis shape, bypassing func().
++            # - POST: return value shape/content depends only on axis.shape; helper side effects are nil.
++            if all(axis.size == 0 for axis in axes):
++                return [np.empty(axis.shape, dtype=float) for axis in axes]
++
++            # [GUID: WCSXFORM-004]
++            # Non-empty mixed-container mapping:
++            # - all axes non-empty after broadcast => emit one output container per input axis.
++            # - preserve axis order via sequential i-index extraction from transformed matrix.
++            # - preserve shape by reshaping each extracted column to `axes[0].shape`.
++
+             xy = np.hstack([x.reshape((x.size, 1)) for x in axes])
+ 
+             if ra_dec_order and sky == 'input':
+@@ -1235,6 +1328,16 @@ reduce these to 2 dimensions using the naxis kwarg.
+                 raise ValueError(
+                     "When providing two arguments, the array must be "
+                     "of shape (N, {0})".format(self.naxis))
++
++            if xy.shape[0] == 0:
++                return np.empty((0, self.naxis))
++
++            # [GUID: WCSXFORM-004]
++            # Non-empty single-array mapping:
++            # - keep two-argument input semantics unchanged.
++            # - no conditional transforms or retyping occur here except optional sky normalization.
++            # - return type is always the backend function result with existing ndarray shape/order.
++
+             if ra_dec_order and sky == 'input':
+                 xy = self._denormalize_sky(xy)
+             result = func(xy, origin)
+@@ -1276,6 +1379,16 @@ reduce these to 2 dimensions using the naxis kwarg.
+                 self.naxis, self.naxis + 1, len(args)))
+ 
+     def all_pix2world(self, *args, **kwargs):
++        # [GUID: WCSXFORM-002][Obligation 2]
++        # Control-flow obligation:
++        # - Route into _array_converter unchanged to preserve helper-path behavior.
++        # - Empty required-axis batches must use helper empty-output short-circuit.
++        # - Preserve existing full-distortion invocation for non-empty inputs.
++        # [GUID: WCSXFORM-005]
++        # Peer-path obligation:
++        # - malformed non-empty payloads remain delegated through `_array_converter` to preserve
++        #   legacy validation behavior and exception identity.
++        # - no alternate empty-input interpretation path is introduced for malformed shapes.
+         return self._array_converter(
+             self._all_pix2world, 'output', *args, **kwargs)
+     all_pix2world.__doc__ = """
+@@ -1349,6 +1462,58 @@ reduce these to 2 dimensions using the naxis kwarg.
+     def wcs_pix2world(self, *args, **kwargs):
+         if self.wcs is None:
+             raise ValueError("No basic WCS settings were created.")
++        # [GUID: WCSXFORM-003][Obligation 1]
++        # Branch mapping:
++        # 1) If input is not consistent shape for naxis/axis arrays, preserve current
++        #    exceptions from _array_converter/_denormalize/_wcslib path.
++        # 2) If empty-input fast path is used by _array_converter, return zero-length
++        #    outputs exactly as today.
++        # 3) Never introduce any new success path for mixed-empty/per-axis partial-empty
++        #    inputs.
++        # [GUID: WCSXFORM-001]
++        # Control-flow obligation:
++        #   - Input validation and empty-input branching remain delegated to _array_converter.
++        #   - For fully-empty axis inputs (both required axes empty for naxis==2, and
++        #     equivalently all required axes for naxis>2), execution must return the
++        #     existing per-axis/family-shaped empty container and complete with no
++        #     InconsistentAxisTypesError.
++        #   - Non-empty behavior must remain unchanged.
++        # [GUID: WCSXFORM-002][Obligation 1]
++        # Branch rule:
++        # 1) Guard: if self.wcs is missing => ValueError preserved.
++        # 2) Delegate to _array_converter with wcslib core transform.
++        # 3) If helper detects all required-axis empties -> return zero-length result.
++        # 4) If helper raises axis consistency errors, propagate as before.
++        # [GUID: WCSXFORM-004][Obligation 1]
++        # Non-empty compatibility gate:
++        # 1) For scalar, tuple/list-of-scales, and array signatures with no empty-axis
++        #    success path, do not add pre/post conversion branches.
++        # 2) Keep delegation target and callable identity exactly:
++        #    `lambda xy, o: self.wcs.p2s(xy, o)['world']`.
++        # 3) Let `_array_converter` enforce all shape/broadcast/return-structure behavior.
++        # 4) The returned value must be structurally identical to prior behavior:
++        #    same axis ordering, same container class, and same shape for all valid non-empty
++        #    test-covered calls.
++        # [GUID: WCSXFORM-005]
++        # Malformed-non-empty obligation:
++        # 1) do not add new pre-validation in this method.
++        # 2) keep full delegation to `_array_converter` so existing exception order/typing
++        #    remains unchanged.
++        # 3) empty-input success is only the existing shared helper short-circuit, not a new
++        #    branch in this method.
++        # [GUID: WCSXFORM-006]
++        # Sequence-stability obligations:
++        # - R1 call flow:
++        #   1. validate basic WCS setup exists.
++        #   2. delegate to `_array_converter`.
++        #   3. if all required axes are empty, return helper-constructed empty family.
++        #   4. else execute normal wcslib path for transformed outputs.
++        # - R2 transition:
++        #   - after an empty call, next non-empty call must still start from fresh helper state
++        #     and follow step 4 without branch drift.
++        # - R3 equivalence:
++        #   - for fresh-but-equivalent WCS instances, repeated empty/non-empty/empty sequences must
++        #     produce identical contract outcomes, proving no internal state divergence.
+         return self._array_converter(
+             lambda xy, o: self.wcs.p2s(xy, o)['world'],
+             'output', *args, **kwargs)
+@@ -1818,6 +1983,24 @@ reduce these to 2 dimensions using the naxis kwarg.
+         if self.wcs is None:
+             raise ValueError("No basic WCS settings were created.")
+ 
++        # [GUID: WCSXFORM-003][Obligation 3]
++        # Alignment requirement logic:
++        # 1) Delegate to _array_converter for argument family normalization.
++        # 2) _array_converter must decide emptiness only when all required axes are empty.
++        # 3) Mixed-empty alignment cases continue through existing exception flow; no
++        #    new all-empty success branch is added.
++        # [GUID: WCSXFORM-002][Obligation 2]
++        # Control-flow obligation:
++        # - Delegate to _array_converter for argument normalization and empty-input
++        #   short-circuit.
++        # - empty required-axis inputs must return per-axis empty arrays without invoking
++        #   iterative wcslib path.
++        # - non-empty and malformed cases keep existing behavior.
++        # [GUID: WCSXFORM-005]
++        # Same-helper-path peer rule:
++        # - malformed non-empty payloads for this path must preserve legacy validation failures
++        #   and must not flow into the all-empty success branch.
++        # - empty-input success remains constrained to true all-axis empty broadcast inputs only.
+         return self._array_converter(
+             lambda *args, **kwargs:
+             self._all_world2pix(
+@@ -2156,6 +2339,27 @@ reduce these to 2 dimensions using the naxis kwarg.
+     def wcs_world2pix(self, *args, **kwargs):
+         if self.wcs is None:
+             raise ValueError("No basic WCS settings were created.")
++        # [GUID: WCSXFORM-003][Obligation 2]
++        # Decision points:
++        # 1) Preserve required-axis and origin normalization in _array_converter.
++        # 2) Maintain the existing invalid-shape behavior for mismatched/mixed empties.
++        # 3) Permit empty return only when all supplied required axes are empty and the
++        #    per-axis broadcast branch has no remaining non-empty axis.
++        # [GUID: WCSXFORM-002][Obligation 1][Obligation 3]
++        # State-transition obligation:
++        # 1) Input arrives as either NxN coords or naxis individual arrays.
++        # 2) Empty-input transition:
++        #    - if all required axes have size 0, return empty arrays shaped by input.
++        #    - do not raise InconsistentAxisTypesError.
++        #    - retain method-level state; next non-empty invocation must behave as normal.
++        # 3) Non-empty transition:
++        #    - call _array_converter and keep existing world->pixel wcslib flow.
++        # [GUID: WCSXFORM-005]
++        # Same-path peer obligation:
++        # 1) malformed non-empty payloads must preserve existing validation class/message behavior;
++        #    no remapping through empty-input success path.
++        # 2) world2pix uses the same `_array_converter` branching as pix2world peers and must
++        #    remain behavior-equivalent for malformed-branch outcomes.
+         return self._array_converter(
+             lambda xy, o: self.wcs.s2p(xy, o)['pixcrd'],
+             'input', *args, **kwargs)
