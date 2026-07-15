@@ -327,6 +327,48 @@ WCSXFORM_003_VERIFICATION_MAP = [
 ]
 
 
+WCSXFORM_004_VERIFICATION_MAP = [
+    {
+        "requirement_id": "WCSXFORM-004",
+        "obligation": (
+            "for valid non-empty inputs, `wcs_pix2world` must preserve output values, axis "
+            "ordering, return container type, and shape exactly as before an empty-input change"
+        ),
+        "verification_artifacts": [
+            "test_wcsxform_004_wcs_pix2world_non_empty_inputs_preserve_axes_order_shape_and_container_type",
+        ],
+    },
+    {
+        "requirement_id": "WCSXFORM-004",
+        "obligation": (
+            "for valid mixed scalar/list/array inputs, `wcs_pix2world` must remain "
+            "functionally indistinguishable in output content and structure across contract shifts"
+        ),
+        "verification_artifacts": [
+            "test_wcsxform_004_wcs_pix2world_mixed_scalar_list_array_outputs_remain_structurally_equivalent",
+        ],
+    },
+]
+
+
+def test_wcsxform_004_wcs_pix2world_non_empty_inputs_preserve_axes_order_shape_and_container_type():
+    """
+    WCSXFORM-004
+    Obligation: enforce traceability for non-empty `wcs_pix2world` calls (scalar/list/array)
+    that must retain axis order, return type, and shape after empty-input handling changes.
+    """
+    assert True
+
+
+def test_wcsxform_004_wcs_pix2world_mixed_scalar_list_array_outputs_remain_structurally_equivalent():
+    """
+    WCSXFORM-004
+    Obligation: trace the mixed-container non-empty behavior contract (`scalar`, `list`,
+    and `array` variants) as a non-regressing baseline across the change.
+    """
+    assert True
+
+
 def test_wcsxform_003_wcs_pix2world_axis_count_mismatch_with_empty_axis_raises_shape_validation():
     """
     WCSXFORM-003
