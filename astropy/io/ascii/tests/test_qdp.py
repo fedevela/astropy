@@ -310,9 +310,50 @@ def test_issue13_001_case_insensitive_read_command_sub_key_dispatch():
 
 def test_issue13_002_issue_spec_reads_mixed_case_read_serr_and_succeeds():
     """ISSUE13-002: lowercase/mixed-case read serr command succeeds with ascii.qdp parsing."""
-    assert True
+    lower_case = """
+    read serr 1 2
+    1 0.5 1 0.5
+    """
+    mixed_case = """
+    ReAd SeRr 1 2
+    1 0.5 1 0.5
+    """
+    expected = Table.read(mixed_case, format="ascii.qdp", names=["x", "y"], table_id=0)
+    result = Table.read(lower_case, format="ascii.qdp", names=["x", "y"], table_id=0)
+
+    assert result.colnames == ["x", "x_err", "y", "y_err"]
+    assert len(result) == 1
+    assert np.allclose(result["x"], [1])
+    assert np.allclose(result["x_err"], [0.5])
+    assert np.allclose(result["y"], [1])
+    assert np.allclose(result["y_err"], [0.5])
+    assert result.colnames == expected.colnames
+    assert [name for name in result.colnames if name.endswith("_err")] == ["x_err", "y_err"]
+    assert np.ma.allequal(result["x"], expected["x"])
+    assert np.ma.allequal(result["x_err"], expected["x_err"])
+    assert np.ma.allequal(result["y"], expected["y"])
+    assert np.ma.allequal(result["y_err"], expected["y_err"])
 
 
 def test_issue13_002_issue_spec_columns_and_error_semantics_match_uppercase_reference():
     """ISSUE13-002: mixed-case read serr output matches READ SERR output for columns and errors."""
-    assert True
+    qdp_lower = """
+    read serr 1 2
+    1 0.5 1 0.5
+    2 0.75 2 0.75
+    """
+    qdp_upper = """
+    READ SERR 1 2
+    1 0.5 1 0.5
+    2 0.75 2 0.75
+    """
+    table_lower = Table.read(qdp_lower, format="ascii.qdp", names=["x", "y"], table_id=0)
+    table_upper = Table.read(qdp_upper, format="ascii.qdp", names=["x", "y"], table_id=0)
+
+    assert table_lower.colnames == table_upper.colnames
+    assert len(table_lower) == len(table_upper) == 2
+    for name in table_lower.colnames:
+        assert np.ma.allequal(table_lower[name], table_upper[name])
+    assert "_err" in table_lower.colnames
+    assert "x_err" in table_lower.colnames
+    assert "y_err" in table_lower.colnames
