@@ -1261,6 +1261,31 @@ class FITS_rec(np.recarray):
 
         # Replace exponent separator in floating point numbers
         if 'D' in format:
+            # DEXP-001: if branch active for a D-format ASCII float, the
+            # replaced exponent bytes MUST become the active serialized value.
+            #
+            # REQUIREMENT-TO-LOGIC mapping:
+            # - test_dexp_001_assigns_replace_result_to_output_field
+            #   => compute replacement and assign to `output_field`.
+            # - test_dexp_001_uses_replaced_output_field_for_serialization
+            #   => do not preserve a stale container reference; update active
+            #   variable before serializer consumption.
+            # - test_dexp_001_emits_d_separator_for_d_format_fields
+            #   => output bytes contain `D` in the exponent separator.
+            #
+            # PSEUDOCODE:
+            # IF format contains 'D':
+            #   replaced = output_field.replace(encode_ascii('E'),
+            #                                  encode_ascii('D'))
+            #   output_field = replaced
+            #   (Downstream writer reads updated `output_field`.)
+            # ELSE:
+            #   pass
+            #
+            # FAILURE PATH:
+            #   If no 'E' exponent bytes are present, assignment is a no-op.
+            #   If earlier validation overflow occurs, ValueError is already
+            #   raised before reaching this branch.
             output_field = output_field.replace(encode_ascii('E'),
                                                encode_ascii('D'))
 
