@@ -1,0 +1,441 @@
+diff --git a/astropy/io/ascii/fixedwidth.py b/astropy/io/ascii/fixedwidth.py
+index fdadbbc..15b7c69 100644
+--- a/astropy/io/ascii/fixedwidth.py
++++ b/astropy/io/ascii/fixedwidth.py
+@@ -261,6 +261,20 @@ class FixedWidthData(basic.BasicData):
+     def write(self, lines):
+         default_header_rows = [] if self.header.start_line is None else ["name"]
+         header_rows = getattr(self, "header_rows", default_header_rows)
++        # ASTRST-002 / ASTRST-004 / ASTRST-005 logic:
++        # INPUT: ordered `self.cols` plus configured `header_rows` token list.
++        # OUTPUT GOAL:
++        #   - one final width vector reused by every emitted row.
++        #   - one emitted line per token in request order.
++        #   - stable column alignment for all header and data rows.
++        # STATE/DECISION:
++        #   1) Collect data column values.
++        #   2) Collect header token values in request order.
++        #   3) Compute `widths` from both sets (initially from data, then widen for each
++        #      header row cell if needed).
++        #   4) Emit rows in this deterministic sequence:
++        #      headers -> divider(if configured) -> data.
++        # ERROR PATH: no new explicit raises; existing splitter/metadata behavior remains.
+         # First part is getting the widths of each column.
+         # List (rows) of list (column values) for data lines
+         vals_list = []
+@@ -344,6 +358,16 @@ class FixedWidth(basic.Basic):
+         bookend=True,
+         header_rows=None,
+     ):
++        # ASTRST-003 logic:
++        # INPUT: `header_rows` keyword from writer construction.
++        # BRANCH:
++        #   - header_rows is None -> normalize to ["name"] to preserve default single header
++        #     behavior in existing ascii.rst output.
++        #   - header_rows explicit list -> preserve order and count exactly as provided.
++        # OUTPUT:
++        #   - propagate same normalized header_rows to both data and header components.
++        #   - set data.start_line to len(header_rows) only when header start line is unset.
++        # GUARANTEE: default topology for no header_rows remains unchanged by contract.
+         if header_rows is None:
+             header_rows = ["name"]
+         super().__init__()
+diff --git a/astropy/io/ascii/rst.py b/astropy/io/ascii/rst.py
+index abdeba8..a568038 100644
+--- a/astropy/io/ascii/rst.py
++++ b/astropy/io/ascii/rst.py
+@@ -57,10 +57,45 @@ class RST(FixedWidth):
+     data_class = SimpleRSTData
+     header_class = SimpleRSTHeader
+ 
+-    def __init__(self):
+-        super().__init__(delimiter_pad=None, bookend=False)
++    def __init__(self, header_rows=None):
++        # ASTRST-001 / ASTRST-003 state machine:
++        # INPUT: header_rows passed by the writer factory (typically ascii.write(...)).
++        # DECISION:
++        #   - If caller provided a header_rows value, keep it as-is.
++        #   - If caller omitted it, default to None.
++        # ASTRST-003 branch:
++        #   - None (unset) must keep existing default pipeline from FixedWidth, which
++        #     resolves to ["name"] and preserves default topology.
++        # ACTION: Pass only write-time formatting knobs to FixedWidth constructor; no
++        #   reader/parser changes.
++        # OUTPUT: Writer instance configured with:
++        #   delimiter_pad=None, bookend=False, header_rows=<provided_or_default>.
++        # GUARD: This path must never call reader/parser components.
++        # SUCCESS PATH: Construction returns without "unexpected keyword argument 'header_rows'".
++        super().__init__(
++            delimiter_pad=None, bookend=False, header_rows=header_rows
++        )
+ 
+     def write(self, lines):
++        # ASTRST-002 / ASTRST-003 / ASTRST-004 write-path-only contract:
++        # INPUT: `lines` from FixedWidthData.write with all header/data rows already
++        #        width-aligned using shared column widths.
++        # STATE/BRANCH:
++        #   - header_rows = self.data.header_rows when set else ["name"].
++        #   - top_border_pos = len(header_rows) (post-header separator position).
++        #   - top_border = lines[top_border_pos].
++        # TRANSITION:
++        #   1) prepend top_border -> body -> append top_border.
++        #   2) preserve top/middle/bottom border equality by reusing exact same row.
++        # SUCCESS CRITERIA:
++        #   - without header_rows: default RST topology unchanged (single header separator).
++        #   - with header_rows: emitted top/middle/bottom '=' lines frame and separate
++        #     header block and data block while column boundaries remain aligned.
++        # FAILURE PATH:
++        #   - malformed header_rows/line assembly remains delegated to inherited formatter
++        #     invariants; no new error classes introduced here.
+         lines = super().write(lines)
+-        lines = [lines[1]] + lines + [lines[1]]
++        header_rows = getattr(self.data, "header_rows", ["name"])
++        border = lines[len(header_rows)]
++        lines = [border] + lines + [border]
+         return lines
+diff --git a/astropy/io/ascii/rst_architecture.md b/astropy/io/ascii/rst_architecture.md
+new file mode 100644
+index 0000000..7027001
+--- /dev/null
++++ b/astropy/io/ascii/rst_architecture.md
+@@ -0,0 +1,143 @@
++# ASCII RST header_rows architecture map (ASTRST-001, ASTRST-002, ASTRST-003, ASTRST-004, ASTRST-005, ASTRST-006)
++
++## Scope
++
++- Writer option support: `ascii.rst` write path accepts `header_rows` during writer construction.
++- Deterministic multi-line header rendering for `ascii.rst` when `header_rows` contains ordered tokens.
++- Shared column-width derivation for those header rows and all body rows.
++- Reader/parser path untouched: no changes to parsing logic or read contracts.
++- Default output topology is preserved for `ascii.rst` calls without explicit `header_rows`.
++- `=` border-row continuity and boundary alignment are required when `header_rows` are emitted.
++
++## Requirement-to-architecture mapping
++
++- `ASTRST-001` (`ascii.rst` write option support):
++  - Logical pressure: ownership + contract
++  - Architectural home: `astropy/io/ascii/rst.py` class `RST`
++  - Primary seam: `RST.__init__(header_rows=None)` → `FixedWidth.__init__(..., header_rows=...)`
++  - Contract: constructor must accept `header_rows` and pass it through as a formatting option.
++  - Integration impact: only write-side path; no reader/parsing imports or callsites altered.
++
++- `ASTRST-002` (ordered multiple header rows before data):
++  - Logical pressure: boundary + ordering + interface sequence
++  - Architectural home: `astropy/io/ascii/rst.py` method `RST.write`
++  - Primary seam: fixed-width line buffer produced by parent writer (`self.data.write(lines)` equivalent)
++    -> `RST.write` framing logic.
++  - Contract:
++    - Output header row sequence must preserve `header_rows` request order.
++    - For `["name", "unit"]`, the first emitted header line is names, the second is units.
++    - Both rows appear before the table body.
++  - Dependency rule: `RST.write` is forbidden to re-interpret header tokens; it only inserts/render-orders
++    already-materialized header lines from fixed-width formatter.
++
++- `ASTRST-003` (default topology preservation when `header_rows` is omitted):
++  - Logical pressure: ownership, boundary, regression anchor
++  - Architectural home:
++    - `astropy/io/ascii/fixedwidth.py` class `FixedWidth.__init__`
++    - `astropy/io/ascii/rst.py` class `RST.__init__`
++    - `astropy/io/ascii/rst.py` class `RST.write`
++  - Primary seam:
++    - `RST.__init__(header_rows=None)` forwards formatting intent into `FixedWidth`.
++    - `FixedWidth.__init__` normalizes unset `header_rows` to `["name"]`.
++    - `RST.write` selects default header-block size only through `self.data.header_rows`.
++  - Contract:
++    - no `header_rows` argument keeps the pre-existing single-separator RST output shape.
++    - existing `test_write_normal` remains the default baseline contract.
++  - Integration impact: no reader/parsing seam is introduced.
++
++- `ASTRST-004` (`=` border shape with header rows):
++  - Logical pressure: geometry + alignment + contract seam
++  - Architectural home:
++    - `astropy/io/ascii/fixedwidth.py` class `FixedWidthData.write`
++    - `astropy/io/ascii/rst.py` class `RST.write`
++  - Primary seam:
++    - `FixedWidthData.write` computes one width vector reused by every header/data row.
++    - `RST.write` wraps the emitted lines with the same `=` border row at top/middle/bottom.
++  - Contract:
++    - every header/data line shares the same column boundary positions.
++    - output includes valid simple-table border positions in `=` style.
++    - the same border row can be reused for top/middle/bottom without style change.
++  - Integration impact: no additional style options or read-path dependencies.
++
++- `ASTRST-005` (stable width alignment across header rows and data):
++  - Logical pressure: algorithmic state + stability + compatibility
++  - Architectural home: `astropy/io/ascii/fixedwidth.py` method `FixedWidthData.write`
++  - Primary seam: fixed-width column width calculation and emission path:
++    - width vector computed from candidate rows and reused for `header_rows` formatting and body formatting.
++    - header section emission order becomes `for token in header_rows`.
++  - Contract:
++    - Exactly one width derivation pass before rendering all rows.
++    - Every rendered header/data row uses same width vector.
++    - Border/divider position remains stable (`len(header_rows)` header lines before border/body transition).
++  - Integration guard: no alternate width policy for header-only or token-only passes.
++
++- `ASTRST-006` (reader/parser stability):
++  - Logical pressure: boundary + dependency direction
++  - Architectural home: `astropy/io/ascii/tests/test_rst.py`
++    - Regression-obligation map and placeholder contract artifacts anchor required unchanged behavior.
++  - Primary seam: test suite includes unchanged `test_read_*` and `test_write_normal` expectations.
++  - Contract: existing read/write behavior must remain unchanged unless `header_rows` path is exercised.
++
++## Ownership and boundaries
++
++- `RST` class owns reStructuredText formatting construction and output framing.
++- `FixedWidth` owns shared write algorithms and line rendering.
++- ASCII RST reader behavior remains owned by `RST.read` inheritance and sibling read-related tests in
++  `astropy/io/ascii/tests/test_rst.py`; this issue introduces no new dependency from `RST` write constructor into reader modules.
++- Boundary between write and read:
++  - `RST.__init__` and `RST.write` are confined to output formatting concerns.
++  - Parser entry points (reader constructors/parsers in `core.py` and `fixedwidth.py` read code paths) remain outside this ticket’s ownership.
++
++## Dependency direction
++
++- New/required dependency is one-way:
++  - `RST` → `FixedWidth` (formatter constructor forwarding only).
++  - `RST.write` → `FixedWidthData.write` output contract (line vector shape and border position semantics).
++- No new dependency from ASCII RST read/parsing path into `header_rows` handling.
++- Additional boundary invariants:
++  - `FixedWidth.__init__` is the sole owner of default `header_rows` semantics.
++  - `RST.write` owns border framing only and cannot change width calculation or column metadata.
++
++## Integration seam skeletons
++
++- Writer construction seam:
++  - Input: optional `header_rows` from `ascii.write(..., Writer=ascii.RST, header_rows=...)`
++  - Interface: constructor argument on `RST.__init__`
++  - Output: forwarded option reaches `FixedWidth` writer implementation.
++
++- Multi-header output seam:
++  - Input: ordered `header_rows` list on `ascii.rst` formatter.
++  - Step 1 (width authority): `FixedWidthData.write` owns width planning and emits row strings.
++  - Step 2 (framing authority): `RST.write` owns placement of `header_rows` lines relative to `self.data.write(lines)` output.
++  - Guarantee: header block length equals number of tokens; column geometry matches body.
++
++- Verification seam:
++  - Input: exact-output fixtures bound to `ASTRST_VERIFICATION_MAPPING`.
++  - Contract points:
++    - `ASTRST-002`: `test_astrst_002_rst_header_rows_name_unit_ordered_before_data`
++    - `ASTRST-005`: `test_astrst_005_rst_multiple_header_rows_share_stable_widths_with_data`
++  - `ASTRST-003`:
++    - Baseline contract and regression anchor:
++      - `test_astrst_003_rst_no_header_rows_defaults_preserve_rst_topology`
++      - `test_write_normal`
++  - `ASTRST-004`:
++    - border geometry and alignment contracts:
++      - `test_astrst_004_rst_header_rows_with_equals_borders_and_column_alignment`
++
++- Regression seam:
++  - Baseline tests remain the same pass-to-pass artifacts listed in `ASTRST_VERIFICATION_MAPPING`.
++
++## Readiness signal
++
++- Structural readiness is complete when:
++  - all obligation pressure points above map to files/locations.
++  - write/read boundaries remain separated.
++  - contract artifacts remain requirement-traceable (`ASTRST_VERIFICATION_MAPPING`).
++  - stable geometry contract is represented at least once in a write-path seam artifact (`FixedWidthData.write` + `RST.write`).
++
++## Traceability manifest
++
++- `astropy/io/ascii/tests/test_rst.py` → ASTRST-002, ASTRST-003, ASTRST-004, ASTRST-005 (test placeholders and mapping entries)
++- `astropy/io/ascii/fixedwidth.py` → ASTRST-005 (shared width authority)
++- `astropy/io/ascii/rst.py` → ASTRST-002 / ASTRST-003 / ASTRST-004 (frame boundary and top-line framing)
++- `astropy/io/ascii/rst_architecture.md` → ASTRST-003 / ASTRST-004 (traceable seam and boundary declarations)
+diff --git a/astropy/io/ascii/tests/test_rst.py b/astropy/io/ascii/tests/test_rst.py
+index 84d6fed..1ce6150 100644
+--- a/astropy/io/ascii/tests/test_rst.py
++++ b/astropy/io/ascii/tests/test_rst.py
+@@ -2,7 +2,9 @@
+ 
+ from io import StringIO
+ 
++from astropy import units as u
+ from astropy.io import ascii
++from astropy.table import QTable
+ 
+ from .common import assert_almost_equal, assert_equal
+ 
+@@ -185,3 +187,182 @@ Col1      Col2 Col3 Col4
+ ==== ========= ==== ====
+ """,
+     )
++
++
++ASTRST_VERIFICATION_MAPPING = {
++    "ASTRST-001": {
++        "obligation": "Writer construction accepts header_rows for ascii.rst without TypeError.",
++        "artifacts": [
++            "astropy.io.ascii.tests.test_rst.test_astrst_001_rst_writer_header_rows_supported"
++        ],
++    },
++    "ASTRST-002": {
++        "obligation": (
++            "For format='ascii.rst' and header_rows=['name', 'unit'], output renders"
++            " the name row first, then the unit row, and both before any data rows."
++        ),
++        "artifacts": [
++            "astropy.io.ascii.tests.test_rst.test_astrst_002_rst_header_rows_name_unit_ordered_before_data"
++        ],
++    },
++    "ASTRST-003": {
++        "obligation": (
++            "For ascii.rst calls without header_rows, default output topology remains unchanged"
++            " (single header and separator placement), using the same baseline contract as"
++            " test_write_normal."
++        ),
++        "artifacts": [
++            "astropy.io.ascii.tests.test_rst.test_astrst_003_rst_no_header_rows_defaults_preserve_rst_topology",
++            "astropy.io.ascii.tests.test_rst.test_write_normal",
++        ],
++    },
++    "ASTRST-004": {
++        "obligation": (
++            "When header_rows is present, ascii.rst output uses '=' border rows in existing"
++            " style and keeps column boundaries aligned for each header/data line."
++        ),
++        "artifacts": [
++            "astropy.io.ascii.tests.test_rst.test_astrst_004_rst_header_rows_with_equals_borders_and_column_alignment"
++        ],
++    },
++    "ASTRST-005": {
++        "obligation": (
++            "When multiple header row tokens are requested, each token maps to a separate"
++            " line and all header lines use a single final width set shared with data rows."
++        ),
++        "artifacts": [
++            "astropy.io.ascii.tests.test_rst.test_astrst_005_rst_multiple_header_rows_share_stable_widths_with_data"
++        ],
++    },
++    "ASTRST-006": {
++        "obligation": (
++            "Existing read/write regressions in test_rst remain the stable contract for "
++            "unchanged reader/parser and writer behavior."
++        ),
++        "artifacts": [
++            "astropy.io.ascii.tests.test_rst.test_read_normal",
++            "astropy.io.ascii.tests.test_rst.test_read_normal_names",
++            "astropy.io.ascii.tests.test_rst.test_read_normal_names_include",
++            "astropy.io.ascii.tests.test_rst.test_read_normal_exclude",
++            "astropy.io.ascii.tests.test_rst.test_read_unbounded_right_column",
++            "astropy.io.ascii.tests.test_rst.test_read_unbounded_right_column_header",
++            "astropy.io.ascii.tests.test_rst.test_read_right_indented_table",
++            "astropy.io.ascii.tests.test_rst.test_trailing_spaces_in_row_definition",
++            "astropy.io.ascii.tests.test_rst.test_write_normal",
++        ],
++    },
++}
++
++
++def test_astrst_001_rst_writer_header_rows_supported():
++    """ASTRST-001: ascii.rst accepts write-time header_rows for quantity columns."""
++    table = QTable()
++    table["distance"] = [1.2, 2.4] * u.m
++    table["time"] = [3.1, 4.2] * u.s
++
++    out = StringIO()
++    ascii.write(table, out, format="ascii.rst", header_rows=["name", "unit"])
++    lines = out.getvalue().splitlines()
++
++    assert len(lines) == 7
++    assert lines[0] == lines[3] == lines[-1]
++    assert set(lines[0].strip()) == {"="}
++    assert lines[1].split() == ["distance", "time"]
++    assert lines[2].split() == ["m", "s"]
++
++
++def test_astrst_002_rst_header_rows_name_unit_ordered_before_data():
++    """ASTRST-002: ascii.rst writes requested header rows in request order before data lines."""
++    table = QTable()
++    table["wave"] = [350, 950] * u.nm
++    table["response"] = [0.7, 1.2] * u.count
++
++    out = StringIO()
++    ascii.write(table, out, format="ascii.rst", header_rows=["name", "unit"])
++
++    assert_equal_splitlines(
++        out.getvalue(),
++        """\
++==== ========
++wave response
++  nm    count
++==== ========
++350      0.7
++950      1.2
++==== ========
++""",
++    )
++
++
++def test_astrst_003_rst_no_header_rows_defaults_preserve_rst_topology():
++    """ASTRST-003: default ascii.rst output topology is unchanged without header_rows."""
++    out = StringIO()
++    ascii.write(dat, out, format="ascii.rst")
++
++    assert_equal_splitlines(
++        out.getvalue(),
++        """\
++==== ========= ==== ====
++Col1      Col2 Col3 Col4
++==== ========= ==== ====
++ 1.2   "hello"    1    a
++ 2.4 's worlds    2    2
++==== ========= ==== ====
++""",
++    )
++
++
++def test_astrst_004_rst_header_rows_with_equals_borders_and_column_alignment():
++    """ASTRST-004: header_rows output keeps '=' borders and aligned column boundaries."""
++    table = QTable()
++    table["distance"] = [1.2, 2.4] * u.m
++    table["time"] = [3.1, 4.2] * u.s
++    header_rows = ["name", "unit"]
++
++    out = StringIO()
++    ascii.write(table, out, format="ascii.rst", header_rows=header_rows)
++    lines = out.getvalue().splitlines()
++
++    assert len(lines) == 1 + len(header_rows) + 1 + 2 + 1
++    assert lines[0] == lines[len(header_rows)] == lines[-1]
++    assert lines[0].startswith("=")
++    assert set(lines[0].replace(" ", "")) == {"="}
++
++    border = lines[0]
++    boundary_positions = {idx for idx, ch in enumerate(border) if ch == " "}
++    assert all(len(line) == len(border) for line in lines)
++    for line in lines[1:]:
++        assert all(line[idx] == " " for idx in boundary_positions)
++
++
++def test_astrst_005_rst_multiple_header_rows_share_stable_widths_with_data():
++    """ASTRST-005: ascii.rst keeps header line count and column widths stable and aligned."""
++    table = QTable()
++    table["ab"] = [1, 2]
++    table["cd"] = [300, 400]
++    table["ab"].description = "wide"
++    table["cd"].description = "extremely_long"
++    table["ab"].unit = u.m
++    table["cd"].unit = u.K
++
++    header_rows = ["name", "description", "unit"]
++
++    out = StringIO()
++    ascii.write(table, out, format="ascii.rst", header_rows=header_rows)
++    lines = out.getvalue().splitlines()
++
++    expected = [
++        "=" * 4 + " " + "=" * 14,
++        f"{'ab':>4} {'cd':>14}",
++        f"{'wide':>4} {'extremely_long':>14}",
++        f"{'m':>4} {'K':>14}",
++        "=" * 4 + " " + "=" * 14,
++        f"{1:>4} {300:>14}",
++        f"{2:>4} {400:>14}",
++        "=" * 4 + " " + "=" * 14,
++    ]
++
++    assert lines == expected
++    assert len(lines[1 : 1 + len(header_rows)]) == len(header_rows)
++    border_len = len(lines[0])
++    assert all(len(line) == border_len for line in lines)

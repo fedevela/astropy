@@ -58,42 +58,14 @@ class RST(FixedWidth):
     header_class = SimpleRSTHeader
 
     def __init__(self, header_rows=None):
-        # ASTRST-001 / ASTRST-003 state machine:
-        # INPUT: header_rows passed by the writer factory (typically ascii.write(...)).
-        # DECISION:
-        #   - If caller provided a header_rows value, keep it as-is.
-        #   - If caller omitted it, default to None.
-        # ASTRST-003 branch:
-        #   - None (unset) must keep existing default pipeline from FixedWidth, which
-        #     resolves to ["name"] and preserves default topology.
-        # ACTION: Pass only write-time formatting knobs to FixedWidth constructor; no
-        #   reader/parser changes.
-        # OUTPUT: Writer instance configured with:
-        #   delimiter_pad=None, bookend=False, header_rows=<provided_or_default>.
-        # GUARD: This path must never call reader/parser components.
-        # SUCCESS PATH: Construction returns without "unexpected keyword argument 'header_rows'".
         super().__init__(
             delimiter_pad=None, bookend=False, header_rows=header_rows
         )
+        # The first data row is after the border immediately following the
+        # configured header rows.
+        self.data.start_line = len(self.data.header_rows) + 2
 
     def write(self, lines):
-        # ASTRST-002 / ASTRST-003 / ASTRST-004 write-path-only contract:
-        # INPUT: `lines` from FixedWidthData.write with all header/data rows already
-        #        width-aligned using shared column widths.
-        # STATE/BRANCH:
-        #   - header_rows = self.data.header_rows when set else ["name"].
-        #   - top_border_pos = len(header_rows) (post-header separator position).
-        #   - top_border = lines[top_border_pos].
-        # TRANSITION:
-        #   1) prepend top_border -> body -> append top_border.
-        #   2) preserve top/middle/bottom border equality by reusing exact same row.
-        # SUCCESS CRITERIA:
-        #   - without header_rows: default RST topology unchanged (single header separator).
-        #   - with header_rows: emitted top/middle/bottom '=' lines frame and separate
-        #     header block and data block while column boundaries remain aligned.
-        # FAILURE PATH:
-        #   - malformed header_rows/line assembly remains delegated to inherited formatter
-        #     invariants; no new error classes introduced here.
         lines = super().write(lines)
         header_rows = getattr(self.data, "header_rows", ["name"])
         border = lines[len(header_rows)]
