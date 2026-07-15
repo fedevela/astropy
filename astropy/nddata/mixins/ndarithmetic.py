@@ -343,13 +343,28 @@ class NDArithmeticMixin:
             else:
                 kwargs["mask"] = deepcopy(self.mask)
         else:
-            # MASKHANDLE-001 + MASKHANDLE-002: callable branch for mask composition.
+            # MASKHANDLE-001 + MASKHANDLE-002 + MASKHANDLE-003/004/005:
+            # callable branch for mask composition.
             # Decision chain (pseudocode):
             # INPUTS: self.mask, operand.mask, handle_mask (e.g. np.bitwise_or).
-            # IF self.mask is None and operand.mask is None -> None.
-            # IF exactly one mask is not None -> deepcopy(that one mask).
-            # IF both masks are not None -> handle_mask(self.mask, operand.mask, **kwds).
-            # Failure path: no call to handle_mask may receive None.
+            # - state machine (inputs are mask presence and operands):
+            #   state=both_none:
+            #       if self.mask is None and operand.mask is None:
+            #           -> OUTPUT mask=None
+            #           -> MASKHANDLE-003: preserve existing both-unmasked output None contract.
+            #   state=exactly_one_present:
+            #       if exactly one of [self.mask, operand.mask] is not None:
+            #           -> OUTPUT deepcopy(non-none-mask)
+            #           -> existing mixed-mask behavior remains unchanged.
+            #   state=both_present:
+            #       if self.mask is not None and operand.mask is not None:
+            #           -> OUTPUT handle_mask(self.mask, operand.mask, **kwds)
+            #           -> MASKHANDLE-004: for handle_mask=np.bitwise_or this is np.bitwise_or(M1, M2).
+            # - Failure path:
+            #   no call to handle_mask may receive None.
+            # MASKHANDLE-005: outside state=exactly_one_present (mixed-mask),
+            # data, uncertainty, WCS, and metadata paths are unchanged; only this mask
+            # transition boundary may be adjusted for mixed-mask-vs-mask behavior.
             kwargs["mask"] = self._arithmetic_mask(
                 operation, operand, handle_mask, axis=axis, **kwds2["mask"]
             )
@@ -530,6 +545,9 @@ class NDArithmeticMixin:
             If neither had a mask ``None`` is returned. Otherwise
             ``handle_mask`` must create (and copy) the returned mask.
         """
+        # MASKHANDLE-003/004/005 callable contract: state transitions for mask
+        # composition are driven by mask presence only; operand/data uncertainty
+        # behavior is intentionally handled in caller flow outside this method.
         if handle_mask is None:
             return None
 
@@ -537,12 +555,27 @@ class NDArithmeticMixin:
             return deepcopy(self.mask)
 
         if self.mask is None and operand.mask is None:
+            # MASKHANDLE-003:
+            # both-unmasked transition:
+            # precondition: both mask references are None
+            # action: output mask remains None
+            # downstream effect: leave data/uncertainty/WCS/meta invariant to
+            # existing all-None mask arithmetic behavior.
             return None
         elif self.mask is None:
             return deepcopy(operand.mask)
         elif operand.mask is None:
             return deepcopy(self.mask)
 
+        # MASKHANDLE-004:
+        # both-masked transition:
+        # precondition: both mask references are present and non-None
+        # action: delegate to handle_mask(self.mask, operand.mask, **kwds)
+        # - for handle_mask=np.bitwise_or this must be exact np.bitwise_or(M1, M2)
+        # - unchanged semantics/shape/content expected for existing pass set.
+        # MASKHANDLE-005:
+        # guardrail: keep all non-mixed branches invariant; only mixed-mask
+        # handling policy may change at callsite level.
         return handle_mask(self.mask, operand.mask, **kwds)
 
     def _arithmetic_wcs(self, operation, operand, compare_wcs, **kwds):
