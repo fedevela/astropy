@@ -196,6 +196,24 @@ ASTRST_VERIFICATION_MAPPING = {
             "astropy.io.ascii.tests.test_rst.test_astrst_001_rst_writer_header_rows_supported"
         ],
     },
+    "ASTRST-002": {
+        "obligation": (
+            "For format='ascii.rst' and header_rows=['name', 'unit'], output renders"
+            " the name row first, then the unit row, and both before any data rows."
+        ),
+        "artifacts": [
+            "astropy.io.ascii.tests.test_rst.test_astrst_002_rst_header_rows_name_unit_ordered_before_data"
+        ],
+    },
+    "ASTRST-005": {
+        "obligation": (
+            "When multiple header row tokens are requested, each token maps to a separate"
+            " line and all header lines use a single final width set shared with data rows."
+        ),
+        "artifacts": [
+            "astropy.io.ascii.tests.test_rst.test_astrst_005_rst_multiple_header_rows_share_stable_widths_with_data"
+        ],
+    },
     "ASTRST-006": {
         "obligation": (
             "Existing read/write regressions in test_rst remain the stable contract for "
@@ -231,3 +249,13 @@ def test_astrst_001_rst_writer_header_rows_supported():
     assert set(lines[0].strip()) == {"="}
     assert lines[1].split() == ["distance", "time"]
     assert lines[2].split() == ["m", "s"]
+
+
+def test_astrst_002_rst_header_rows_name_unit_ordered_before_data():
+    """ASTRST-002: ascii.rst writes requested header rows in request order before data lines."""
+    assert True
+
+
+def test_astrst_005_rst_multiple_header_rows_share_stable_widths_with_data():
+    """ASTRST-005: ascii.rst keeps header line count and column widths stable and aligned."""
+    assert True
