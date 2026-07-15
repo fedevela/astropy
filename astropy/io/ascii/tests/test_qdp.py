@@ -391,9 +391,61 @@ def test_issue13_003_issue_spec_rejects_invalid_read_subkey_after_case_normaliza
 
 def test_issue13_004_issue_spec_preserves_uppercase_qdp_table_shape_type_order_and_values_after_case_insensitive_read_path():
     """ISSUE13-004: Scenario 1 - preserve uppercase parsing behavior and table metadata-free shape/type/order."""
-    assert True
+    uppercase_qdp = """
+    ! Baseline uppercase fixture
+    READ SERR 1
+    1    10.5   100
+    2    20     200
+    NO NO NO
+    """
+    mixed_case_qdp = """
+    ! Baseline uppercase fixture
+    ReAd sErR 1
+    1    10.5   100
+    2    20     200
+    NO NO NO
+    """
+
+    table_upper = Table.read(
+        uppercase_qdp, format="ascii.qdp", table_id=0, names=["x", "y"]
+    )
+    table_mixed = Table.read(
+        mixed_case_qdp, format="ascii.qdp", table_id=0, names=["x", "y"]
+    )
+
+    assert table_upper.colnames == ["x", "x_err", "y"] == table_mixed.colnames
+    assert len(table_upper) == len(table_mixed) == 2
+    assert table_upper["x"].dtype == table_mixed["x"].dtype
+    assert table_upper["x_err"].dtype == table_mixed["x_err"].dtype
+    assert table_upper["y"].dtype == table_mixed["y"].dtype
+    assert np.ma.allequal(table_upper["x"], table_mixed["x"])
+    assert np.ma.allequal(table_upper["x_err"], table_mixed["x_err"])
+    assert np.ma.allequal(table_upper["y"], table_mixed["y"])
+    assert np.allclose(table_upper["x"], [1, 2])
+    assert np.allclose(table_upper["y"], [100, 200])
 
 
 def test_issue13_004_issue_spec_preserves_comments_and_whitespace_semantics_with_uppercase_qdp_and_mixed_spacing():
     """ISSUE13-004: Scenario 2 - preserve comments and whitespace parsing semantics for uppercase inputs."""
-    assert True
+    qdp = """
+    !  initial comment
+    !\tsecond comment with tabs
+    READ    SERR   1
+    !\ttable comment
+    1 \t\t 10.5   100
+    2   \t20      \t200
+    NO    NO   NO
+    """
+
+    table = Table.read(qdp, format="ascii.qdp", table_id=0)
+
+    assert table.meta["initial_comments"] == [
+        "initial comment",
+        "second comment with tabs",
+    ]
+    assert table.meta["comments"] == ["table comment"]
+    assert table.colnames == ["col1", "col1_err", "col2"]
+    assert len(table) == 2
+    assert np.allclose(table["col1"], [1, 2])
+    assert np.ma.allequal(table["col1_err"], np.ma.array([10.5, 20.0]))
+    assert np.allclose(table["col2"], [100, 200])

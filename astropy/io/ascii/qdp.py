@@ -69,42 +69,27 @@ def _line_type(line, delimiter=None):
     _new_re = rf"NO({sep}NO)+"
     _data_re = rf"({_decimal_re}|NO|[-+]?nan)({sep}({_decimal_re}|NO|[-+]?nan))*)"
     _type_re = rf"^\s*((?P<command>{_command_re})|(?P<new>{_new_re})|(?P<data>{_data_re})?\s*(\!(?P<comment>.*))?\s*$"
-    # ISSUE13-001: command token matching must be case-insensitive for both
-    # verb (READ) and key (SERR/TERR) while preserving all previous routing
-    # behavior.
-    # ISSUE13-004: logic obligation.
-    # - Inputs: a raw line and optional delimiter.
-    # - Decision sequence:
-    #   1) trim outer whitespace; classify empty after trim as "comment" first.
-    #   2) apply case-insensitive line grammar only for dispatch recognition.
-    #   3) preserve original lexical shape of matched command lines for downstream
-    #      token handling; this keeps comments, spacing, and row token values stable.
-    # - Failure path:
-    #   - any non-empty line that does not satisfy the accepted grammar or
-    #     accepted command key set must continue through existing
-    #     `Unrecognized QDP line` ValueError.
-    # ISSUE13-002: pseudocode branch:
-    # - classify command lines with case-insensitive matching for READ/SERR/TERR.
-    # - preserve downstream token-type outcomes independent of lexical case.
-    _line_type_re = re.compile(_type_re, flags=re.IGNORECASE)
     line = line.strip()
     if not line:
         return "comment"
-    match = _line_type_re.match(line)
+    match = re.match(_type_re, line)
 
-    # ISSUE13-003: logic obligation.
-    # 1) If line is blank, classify as comment.
-    # 2) If regex matches:
-    #    - command path is only valid for exact "READ SERR" / "READ TERR"
-    #      after case-folding, preserving existing command-token semantics.
-    #    - data/new/comment classification follows current behavior unchanged.
-    # 3) If regex does not match, raise the existing invalid-command error path.
-    #    - unknown verbs (e.g., "READD"), misspelled READ sub-keys
-    #      (e.g., "SERRR"), and other command typos must not be normalized
-    #      into supported handlers.
-    # - failure destination remains ValueError("Unrecognized QDP line: ...").
+    # Command matching is case-insensitive, but non-command numeric/comment tokens
+    # remain governed by the existing grammar.
     if match is None:
+        ci_command_re = re.compile(rf"^\s*{_command_re}\s*$", flags=re.IGNORECASE)
+        if ci_command_re.match(line):
+            command = line.split()
+            if len(command) < 3:
+                raise ValueError(f"Unrecognized QDP line: {line}")
+            if command[0].upper() != "READ":
+                raise ValueError(f"Unrecognized QDP line: {line}")
+            command_key = command[1].lower()
+            if command_key not in ("serr", "terr"):
+                raise ValueError(f"Unrecognized QDP line: {line}")
+            return "command"
         raise ValueError(f"Unrecognized QDP line: {line}")
+
     for type_, val in match.groupdict().items():
         if val is None:
             continue
@@ -179,12 +164,6 @@ def _get_type_from_list_of_lines(lines, delimiter=None):
 
 
 def _get_lines_from_file(qdp_file):
-    # ISSUE13-004: logic obligation.
-    # - Input source branch remains unchanged:
-    #   str with newline chars, filename path, or iterable of lines.
-    # - Preserve legacy semantics for whitespace/comments:
-    #   file-path branch keeps stripping trailing newline only and does not alter
-    #   in-line whitespace used by later parsers.
     if "\n" in qdp_file:
         lines = qdp_file.split("\n")
     elif isinstance(qdp_file, str):
@@ -252,18 +231,6 @@ def _interpret_err_lines(err_specs, ncols, names=None):
 
         serr_cols = err_specs.pop("serr", [])
         terr_cols = err_specs.pop("terr", [])
-    # ISSUE13-002: pseudocode branch:
-    # - interpret canonicalized `serr`/`terr` indices deterministically.
-    # - emit base column then `_err` or `_perr`/`_nerr` columns.
-    # - keep this mapping identical for mixed-case and uppercase command input.
-    # ISSUE13-004: logic obligation.
-    # - Apply `err_specs` to `ncols` only, never reordering values based on
-    #   command token casing.
-    # - Preserve declared data-column input order (`names`) and derive additional
-    #   error-column names by positional expansion.
-    # - Reject only on existing invariants (name-count mismatch) to keep numeric
-    #   shape/order behavior stable.
-
     if names is not None:
         all_error_cols = len(serr_cols) + len(terr_cols) * 2
         if all_error_cols + len(names) != ncols:
@@ -397,9 +364,11 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
                 #   remain reject/ignore rather than coercing to serr/terr.
                 for cline in command_lines.strip().split("\n"):
                     command = cline.strip().split()
-            # This should never happen, but just in case.
-            if len(command) < 3:
-                continue
+
+                    # This should never happen, but just in case.
+                    if len(command) < 3:
+                        continue
+
                     # ISSUE13-001: recognize command sub-keys case-insensitively.
                     if command[0].upper() != "READ":
                         raise ValueError(f"Unrecognized QDP line: {cline}")
