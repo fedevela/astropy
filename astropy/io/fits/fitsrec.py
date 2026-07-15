@@ -1261,8 +1261,16 @@ class FITS_rec(np.recarray):
 
         # Replace exponent separator in floating point numbers
         if 'D' in format:
-            # DEXP-001: if branch active for a D-format ASCII float, the
-            # replaced exponent bytes MUST become the active serialized value.
+            # DEXP-001 ownership boundary:
+            # - Owner: TableData._scale_back_ascii (astropy/io/fits/fitsrec.py)
+            # - Boundary: ASCII formatting layer owns output_field payload before
+            #   it is consumed by the ASCII table writer.
+            # - Contract: output_field is the active serialized byte-array value
+            #   for this field at write time; it may be reassigned but must not
+            #   preserve a stale reference after normalization.
+            # - Dependency direction: local transform only; formatting helpers
+            #   (`output_field.replace`, `encode_ascii`) are called but no
+            #   external state is mutated.
             #
             # REQUIREMENT-TO-LOGIC mapping:
             # - test_dexp_001_assigns_replace_result_to_output_field
