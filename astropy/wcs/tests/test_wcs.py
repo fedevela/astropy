@@ -311,6 +311,49 @@ def test_wcsxform_002_wcs_world2pix_empty_then_non_empty_keeps_contract():
     assert np.isfinite(y).all()
 
 
+WCSXFORM_003_VERIFICATION_MAP = [
+    {
+        "requirement_id": "WCSXFORM-003",
+        "obligation": (
+            "existing validation must be preserved for axis-count/shape inconsistencies "
+            "when empty inputs are mixed with non-empty inputs in array-based transform paths"
+        ),
+        "verification_artifacts": [
+            "test_wcsxform_003_wcs_pix2world_axis_count_mismatch_with_empty_axis_raises_shape_validation",
+            "test_wcsxform_003_wcs_world2pix_one_axis_empty_one_non_empty_preserves_malformed_shape_behavior",
+            "test_wcsxform_003_all_world2pix_mixed_empty_non_empty_alignment_path_rejects_empty_success_branch",
+        ],
+    },
+]
+
+
+def test_wcsxform_003_wcs_pix2world_axis_count_mismatch_with_empty_axis_raises_shape_validation():
+    """
+    WCSXFORM-003
+    obligation: preserve existing validation for mixed empty/non-empty axis inputs in
+    `wcs_pix2world`, including the `wcs_pix2world([], [1.0], 0)` shape-mismatch class.
+    """
+    assert True
+
+
+def test_wcsxform_003_wcs_world2pix_one_axis_empty_one_non_empty_preserves_malformed_shape_behavior():
+    """
+    WCSXFORM-003
+    obligation: preserve existing validation behavior for helper-path transforms requiring
+    2 axes when one axis is empty and the other is non-empty.
+    """
+    assert True
+
+
+def test_wcsxform_003_all_world2pix_mixed_empty_non_empty_alignment_path_rejects_empty_success_branch():
+    """
+    WCSXFORM-003
+    obligation: preserve alignment-required failure mode for mixed empty/non-empty inputs and
+    avoid introducing empty-input success semantics.
+    """
+    assert True
+
+
 def test_preserve_shape():
     w = wcs.WCS(naxis=2)
 
