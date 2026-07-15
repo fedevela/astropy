@@ -99,6 +99,16 @@ def _line_type(line, delimiter=None):
             continue
         if type_ == "data":
             return f"data,{len(val.split(sep=delimiter))}"
+        if type_ == "command":
+            command = line.split()
+            if len(command) < 3:
+                raise ValueError(f"Unrecognized QDP line: {line}")
+            if command[0].upper() != "READ":
+                raise ValueError(f"Unrecognized QDP line: {line}")
+            command_key = command[1].lower()
+            if command_key not in ("serr", "terr"):
+                raise ValueError(f"Unrecognized QDP line: {line}")
+            return type_
         else:
             return type_
 
@@ -337,9 +347,12 @@ def _get_tables_from_qdp_file(qdp_file, input_colnames=None, delimiter=None):
                     if len(command) < 3:
                         continue
                     # ISSUE13-001: recognize command sub-keys case-insensitively.
+                    if command[0].upper() != "READ":
+                        raise ValueError(f"Unrecognized QDP line: {cline}")
                     command_key = command[1].lower()
-                    if command_key in ("serr", "terr"):
-                        err_specs[command_key] = [int(c) for c in command[2:]]
+                    if command_key not in ("serr", "terr"):
+                        raise ValueError(f"Unrecognized QDP line: {cline}")
+                    err_specs[command_key] = [int(c) for c in command[2:]]
             if colnames is None:
                 colnames = _interpret_err_lines(err_specs, ncol, names=input_colnames)
 

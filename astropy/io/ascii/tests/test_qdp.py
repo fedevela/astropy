@@ -365,9 +365,21 @@ def test_issue13_002_issue_spec_columns_and_error_semantics_match_uppercase_refe
 
 def test_issue13_003_issue_spec_rejects_normalized_unknown_command_via_unrecognized_qdp_line():
     """ISSUE13-003: unknown command should follow Unrecognized QDP line path after normalization."""
-    assert True
+    qdp = """
+    READD SERR 1 2
+    1 2 3
+    """
+
+    with pytest.raises(ValueError, match="Unrecognized QDP line"):
+        Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
 
 
 def test_issue13_003_issue_spec_rejects_invalid_read_subkey_after_case_normalization():
     """ISSUE13-003: misspelled READ sub-key should remain rejected after case normalization."""
-    assert True
+    qdp = """
+    READ SeRrR 1 2
+    1 2 3
+    """
+
+    with pytest.raises(ValueError, match="Unrecognized QDP line"):
+        Table.read(qdp, format="ascii.qdp", table_id=0, names=["x", "y"])
