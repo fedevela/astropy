@@ -58,11 +58,28 @@ class RST(FixedWidth):
     header_class = SimpleRSTHeader
 
     def __init__(self, header_rows=None):
+        # ASTRST-001 state machine:
+        # INPUT: header_rows passed by the writer factory (typically ascii.write(...)).
+        # DECISION:
+        #   - If caller provided a header_rows value, keep it as-is.
+        #   - If caller omitted it, default to None.
+        # ACTION: Pass only write-time formatting knobs to FixedWidth constructor.
+        # OUTPUT: Writer instance configured with:
+        #   delimiter_pad=None, bookend=False, header_rows=<provided_or_default>.
+        # GUARD: This path must never call reader/parser components.
+        # SUCCESS PATH: Construction returns without "unexpected keyword argument 'header_rows'".
         super().__init__(
             delimiter_pad=None, bookend=False, header_rows=header_rows
         )
 
     def write(self, lines):
+        # ASTRST-006 write-path-only contract:
+        # INPUT: list `lines` from FixedWidth write formatting.
+        # TRANSITION:
+        #   1) Keep parent's column-alignment behavior untouched.
+        #   2) Build final framed output by prepending and appending divider row (lines[1]).
+        # OUTPUT: rst body wrapped by identical border lines.
+        # LIMIT: No reader parsing behavior, validation, or path branching.
         lines = super().write(lines)
         lines = [lines[1]] + lines + [lines[1]]
         return lines
