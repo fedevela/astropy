@@ -1228,7 +1228,12 @@ reduce these to 2 dimensions using the naxis kwarg.
 
             if ra_dec_order and sky == 'input':
                 xy = self._denormalize_sky(xy)
-            output = func(xy, origin)
+            try:
+                output = func(xy, origin)
+            except InconsistentAxisTypesError:
+                if all(axis.size == 0 for axis in axes):
+                    return [np.empty(axis.shape, dtype=float) for axis in axes]
+                raise
             if ra_dec_order and sky == 'output':
                 output = self._normalize_sky(output)
                 return (output[:, 0].reshape(axes[0].shape),
