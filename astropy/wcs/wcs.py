@@ -1225,6 +1225,22 @@ reduce these to 2 dimensions using the naxis kwarg.
             convention; single-array, generalized multi-axis, mixed-empty, and
             other transformation behavior remain owned by their existing paths.
             """
+            # Pseudocode obligation (GUID: WCS-002):
+            # INPUT: one NumPy coordinate array for every required WCS axis,
+            #        plus an origin already accepted and coerced by the caller.
+            # TRY to broadcast all axis arrays to the established common shape.
+            # IF broadcasting fails:
+            #     RAISE the established non-broadcastable-coordinate error.
+            # IF every broadcast input axis is empty:
+            #     DO NOT hand the empty coordinate matrix to the transform.
+            #     FOR each required output axis, in axis order:
+            #         CREATE an empty NumPy array with the broadcast input shape
+            #         and the numeric dtype used by coordinate conversion.
+            #     RETURN the arrays in the established per-axis container.
+            # ELSE:
+            #     CONTINUE through the existing transform and reshape flow.
+            # OUTPUT: one NumPy array per output axis; for the all-empty branch,
+            #         every array is empty and preserves the common input shape.
             try:
                 axes = np.broadcast_arrays(*axes)
             except ValueError:
