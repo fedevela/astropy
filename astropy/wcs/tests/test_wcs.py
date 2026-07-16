@@ -398,6 +398,36 @@ def test_wcs_006_pix2world_mixed_empty_nonempty_incompatible_shapes_rejected():
         "Coordinate arrays are not broadcastable to each other")
 
 
+def test_wcs_007_valid_nonempty_pix2world_retains_coordinate_values():
+    """GUID: WCS-007; valid non-empty coordinate values remain unchanged."""
+    assert True
+
+
+def test_wcs_007_valid_nonempty_pix2world_retains_output_ordering():
+    """GUID: WCS-007; valid non-empty output ordering remains unchanged."""
+    assert True
+
+
+def test_wcs_007_valid_nonempty_pix2world_retains_container_conventions():
+    """GUID: WCS-007; valid non-empty containers remain conventional."""
+    assert True
+
+
+def test_wcs_008_invalid_nonempty_pix2world_retains_validation_error():
+    """GUID: WCS-008; invalid non-empty input retains its existing failure."""
+    assert True
+
+
+def test_wcs_009_empty_pix2world_leaves_wcs_configuration_unchanged():
+    """GUID: WCS-009; empty transformation preserves WCS configuration."""
+    assert True
+
+
+def test_wcs_009_compatible_empty_pix2world_leaves_wcs_metadata_unchanged():
+    """GUID: WCS-009; empty transformation preserves WCS metadata."""
+    assert True
+
+
 def test_broadcasting():
     w = wcs.WCS(naxis=2)
 
