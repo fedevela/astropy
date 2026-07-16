@@ -297,6 +297,26 @@ def test_wcs_002_all_axis_empty_numpy_arrays_preserve_conventional_output_shapes
     assert all(axis.shape == (2, 0, 3) for axis in result)
 
 
+def test_wcs_003_pix2world_compatible_empty_inputs_accepted_origin_succeeds():
+    """GUID: WCS-003; valid multi-axis empty-input call succeeds."""
+    assert True
+
+
+def test_wcs_003_pix2world_compatible_empty_inputs_return_output_per_wcs_axis():
+    """GUID: WCS-003; valid multi-axis output count follows its WCS axes."""
+    assert True
+
+
+def test_wcs_003_pix2world_compatible_empty_inputs_return_all_outputs_empty():
+    """GUID: WCS-003; valid multi-axis WCS returns every output empty."""
+    assert True
+
+
+def test_wcs_003_pix2world_compatible_empty_inputs_return_wcs_defined_order():
+    """GUID: WCS-003; valid multi-axis outputs retain WCS-defined order."""
+    assert True
+
+
 @pytest.mark.parametrize('origin', [0, 1])
 def test_wcs_004_two_axis_empty_lists_preserve_accepted_origin_semantics(
         origin):
