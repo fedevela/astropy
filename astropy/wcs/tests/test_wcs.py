@@ -238,17 +238,32 @@ def test_preserve_shape():
 
 def test_wcs_001_two_axis_empty_lists_do_not_raise_inconsistent_axis_error():
     """GUID: WCS-001; no InconsistentAxisTypesError is raised."""
-    assert True
+    w = wcs.WCS(naxis=2)
+
+    w.wcs_pix2world([], [], 0)
 
 
 def test_wcs_001_two_axis_empty_lists_return_exactly_two_empty_outputs():
     """GUID: WCS-001; exactly two empty coordinate outputs are returned."""
-    assert True
+    w = wcs.WCS(naxis=2)
+
+    result = w.wcs_pix2world([], [], 0)
+
+    assert len(result) == 2
+    assert all(isinstance(axis, np.ndarray) for axis in result)
+    assert all(axis.shape == (0,) for axis in result)
 
 
-def test_wcs_004_two_axis_empty_lists_preserve_accepted_origin_semantics():
+@pytest.mark.parametrize('origin', [0, 1])
+def test_wcs_004_two_axis_empty_lists_preserve_accepted_origin_semantics(
+        origin):
     """GUID: WCS-004."""
-    assert True
+    w = wcs.WCS(naxis=2)
+
+    result = w.wcs_pix2world([], [], origin)
+
+    assert len(result) == 2
+    assert all(axis.size == 0 for axis in result)
 
 
 def test_broadcasting():
