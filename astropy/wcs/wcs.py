@@ -1215,10 +1215,11 @@ reduce these to 2 dimensions using the naxis kwarg.
         def _return_list_of_arrays(axes, origin):
             """Coordinate-list adapter and empty-input integration seam.
 
-            Architecture contract (GUID: WCS-001, WCS-002, WCS-004): this
-            adapter owns NumPy broadcasting and the per-axis output container
-            and shape convention.  After the caller validates the axis count
-            and coerces ``origin``, an explicit WCS-002 policy selected by
+            Architecture contract
+            (GUID: WCS-001, WCS-002, WCS-003, WCS-004): this adapter owns NumPy
+            broadcasting and the per-axis output container and shape convention.
+            After the caller validates the axis count and coerces ``origin``,
+            an explicit WCS-002 policy selected by
             ``wcs_pix2world`` belongs here: the adapter returns one
             shape-preserving NumPy array per required output axis without
             delegating to ``func``.  Non-empty inputs retain the existing
@@ -1228,9 +1229,15 @@ reduce these to 2 dimensions using the naxis kwarg.
             WCS-002 generalizes only the all-axis empty NumPy-array case.  Its
             activation must remain an explicit caller-to-adapter contract so
             this shared helper does not extend the behavior to other methods.
-            The single combined-coordinate-array convention, mixed
-            empty/non-empty inputs, axis-count validation, and origin acceptance
-            remain owned by their existing paths.
+            WCS-003 specializes that policy for mutually shape-compatible empty
+            inputs on a valid multi-axis WCS: this adapter owns construction of
+            one empty output per WCS output axis and preserves the transform's
+            WCS-defined axis order in the established per-axis container.
+
+            The single combined-coordinate-array convention and mixed
+            empty/non-empty inputs remain outside this seam.  Axis-count
+            validation and origin acceptance remain owned by the outer call
+            path; incompatible shapes remain owned by NumPy broadcasting here.
             """
             # Pseudocode obligation (GUID: WCS-002):
             # INPUT: one NumPy coordinate array for every required WCS axis,
@@ -1417,10 +1424,11 @@ reduce these to 2 dimensions using the naxis kwarg.
     def wcs_pix2world(self, *args, **kwargs):
         if self.wcs is None:
             raise ValueError("No basic WCS settings were created.")
-        # Integration ownership (GUID: WCS-002): this is the sole public method
-        # that may opt into the shared adapter's all-required-axes-empty policy.
-        # The adapter remains responsible for broadcasting, output construction,
-        # and bypassing the wcslib dependency for that policy.
+        # Integration ownership (GUID: WCS-002, WCS-003): this is the sole public
+        # method that may opt into the shared adapter's all-required-axes-empty
+        # policy.  The adapter remains responsible for compatible-shape
+        # broadcasting, WCS-ordered output construction, and bypassing the
+        # wcslib dependency for that policy.
         return self._array_converter(
             lambda xy, o: self.wcs.p2s(xy, o)['world'],
             'output', *args, _wcs_002=True, **kwargs)
