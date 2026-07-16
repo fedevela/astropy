@@ -1212,6 +1212,19 @@ reduce these to 2 dimensions using the naxis kwarg.
         """
 
         def _return_list_of_arrays(axes, origin):
+            """Coordinate-list adapter and empty-input integration seam.
+
+            Architecture contract (GUID: WCS-001, WCS-004): this adapter owns
+            the two-axis, two-empty-list short circuit after NumPy broadcasting
+            and the caller's existing origin coercion.  That branch returns one
+            shape-preserving empty array per input axis and must not delegate to
+            ``func``.  All other inputs retain the existing dependency direction
+            from this Python adapter to ``func``/wcslib.
+
+            The contract is deliberately local to the list-of-arrays calling
+            convention; single-array, generalized multi-axis, mixed-empty, and
+            other transformation behavior remain owned by their existing paths.
+            """
             try:
                 axes = np.broadcast_arrays(*axes)
             except ValueError:
