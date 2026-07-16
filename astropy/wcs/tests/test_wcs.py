@@ -400,32 +400,94 @@ def test_wcs_006_pix2world_mixed_empty_nonempty_incompatible_shapes_rejected():
 
 def test_wcs_007_valid_nonempty_pix2world_retains_coordinate_values():
     """GUID: WCS-007; valid non-empty coordinate values remain unchanged."""
-    assert True
+    w = wcs.WCS(naxis=3)
+    w.wcs.crpix = [1., 2., 3.]
+    w.wcs.crval = [10., 20., 30.]
+    w.wcs.cdelt = [2., 3., 4.]
+
+    result = w.wcs_pix2world(
+        np.array([0., 1.]), np.array([1., 2.]), np.array([2., 3.]), 0)
+
+    assert_allclose(result[0], [10., 12.])
+    assert_allclose(result[1], [20., 23.])
+    assert_allclose(result[2], [30., 34.])
 
 
 def test_wcs_007_valid_nonempty_pix2world_retains_output_ordering():
     """GUID: WCS-007; valid non-empty output ordering remains unchanged."""
-    assert True
+    w = wcs.WCS(naxis=3)
+    w.wcs.crpix = [1., 1., 1.]
+    w.wcs.crval = [100., 200., 300.]
+
+    result = w.wcs_pix2world([0.], [0.], [0.], 0)
+
+    assert [axis[0] for axis in result] == [100., 200., 300.]
 
 
 def test_wcs_007_valid_nonempty_pix2world_retains_container_conventions():
     """GUID: WCS-007; valid non-empty containers remain conventional."""
-    assert True
+    w = wcs.WCS(naxis=2)
+    x = np.arange(6.).reshape(2, 3)
+    y = np.ones((2, 3))
+
+    per_axis = w.wcs_pix2world(x, y, 0)
+    combined = w.wcs_pix2world(
+        np.column_stack([x.ravel(), y.ravel()]), 0)
+
+    assert isinstance(per_axis, list)
+    assert all(isinstance(axis, np.ndarray) for axis in per_axis)
+    assert [axis.shape for axis in per_axis] == [(2, 3), (2, 3)]
+    assert isinstance(combined, np.ndarray)
+    assert combined.shape == (6, 2)
 
 
 def test_wcs_008_invalid_nonempty_pix2world_retains_validation_error():
     """GUID: WCS-008; invalid non-empty input retains its existing failure."""
-    assert True
+    w = wcs.WCS(naxis=2)
+
+    with pytest.raises(ValueError) as exc:
+        w.wcs_pix2world(np.ones((2, 2)), np.ones((3, 2)), 0)
+
+    assert str(exc.value) == (
+        "Coordinate arrays are not broadcastable to each other")
 
 
 def test_wcs_009_empty_pix2world_leaves_wcs_configuration_unchanged():
     """GUID: WCS-009; empty transformation preserves WCS configuration."""
-    assert True
+    w = wcs.WCS(naxis=3)
+    w.wcs.crpix = [1., 2., 3.]
+    w.wcs.crval = [10., 20., 30.]
+    w.wcs.cdelt = [0.1, 0.2, 0.3]
+    w.wcs.pc = np.array([[1., 0.1, 0.],
+                         [0., 1., 0.2],
+                         [0.3, 0., 1.]])
+    before = (w.wcs.crpix.copy(), w.wcs.crval.copy(),
+              w.wcs.cdelt.copy(), w.wcs.pc.copy())
+
+    w.wcs_pix2world(np.empty((2, 0, 1)),
+                    np.empty((1, 0, 3)),
+                    np.empty((2, 0, 3)), 0)
+
+    after = (w.wcs.crpix, w.wcs.crval, w.wcs.cdelt, w.wcs.pc)
+    for original, current in zip(before, after):
+        assert_array_equal(current, original)
 
 
 def test_wcs_009_compatible_empty_pix2world_leaves_wcs_metadata_unchanged():
     """GUID: WCS-009; empty transformation preserves WCS metadata."""
-    assert True
+    w = wcs.WCS(naxis=3)
+    w.wcs.name = 'immutable WCS metadata'
+    w.wcs.radesys = 'ICRS'
+    w.wcs.equinox = 2000.
+    w.wcs.dateobs = '2000-01-01'
+    before = (w.wcs.name, w.wcs.radesys, w.wcs.equinox, w.wcs.dateobs)
+
+    w.wcs_pix2world(np.empty((2, 0, 1)),
+                    np.empty((1, 0, 3)),
+                    np.empty((2, 0, 3)), 0)
+
+    assert (w.wcs.name, w.wcs.radesys,
+            w.wcs.equinox, w.wcs.dateobs) == before
 
 
 def test_broadcasting():
