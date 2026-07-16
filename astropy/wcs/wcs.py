@@ -1313,14 +1313,15 @@ reduce these to 2 dimensions using the naxis kwarg.
             #     CONTINUE through the established non-empty transform path.
             # VERIFY the incompatible-shape failure path with
             # test_wcs_006_pix2world_mixed_empty_nonempty_incompatible_shapes_rejected.
+            original_axes = axes
             try:
                 axes = np.broadcast_arrays(*axes)
             except ValueError:
                 raise ValueError(
                     "Coordinate arrays are not broadcastable to each other")
 
-            # GUID: WCS-001, WCS-002, WCS-003, WCS-004
-            all_axes_empty = all(axis.size == 0 for axis in axes)
+            # GUID: WCS-001, WCS-002, WCS-003, WCS-004, WCS-006
+            all_axes_empty = all(axis.size == 0 for axis in original_axes)
             if all_axes_empty and (len(axes) == 2 or _wcs_002):
                 output_shape = axes[0].shape
                 return [np.empty(output_shape, dtype=float)

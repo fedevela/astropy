@@ -378,12 +378,24 @@ def test_wcs_004_two_axis_empty_lists_preserve_accepted_origin_semantics(
 
 def test_wcs_005_pix2world_wrong_empty_axis_count_keeps_axis_count_rejection():
     """GUID: WCS-005; malformed all-empty calls retain axis-count rejection."""
-    pass
+    w = wcs.WCS(naxis=3)
+
+    with pytest.raises(TypeError) as exc:
+        w.wcs_pix2world(np.array([]), np.array([]), 0)
+
+    assert str(exc.value).startswith(
+        "WCS projection has 3 dimensions, so expected 2")
 
 
 def test_wcs_006_pix2world_mixed_empty_nonempty_incompatible_shapes_rejected():
     """GUID: WCS-006; mixed incompatible inputs retain shape validation."""
-    pass
+    w = wcs.WCS(naxis=2)
+
+    with pytest.raises(ValueError) as exc:
+        w.wcs_pix2world(np.empty((0,)), np.ones((2,)), 0)
+
+    assert str(exc.value) == (
+        "Coordinate arrays are not broadcastable to each other")
 
 
 def test_broadcasting():
