@@ -1216,8 +1216,9 @@ reduce these to 2 dimensions using the naxis kwarg.
             """Coordinate-list adapter and empty-input integration seam.
 
             Architecture contract
-            (GUID: WCS-001, WCS-002, WCS-003, WCS-004, WCS-005, WCS-006): the
-            outer ``_array_converter`` owns argument-convention and axis-count
+            (GUID: WCS-001, WCS-002, WCS-003, WCS-004, WCS-005, WCS-006,
+            WCS-007, WCS-008, WCS-009): the outer ``_array_converter`` owns
+            argument-convention, axis-count, coordinate coercion, and origin
             validation.  This per-axis adapter is entered only after that
             boundary accepts a complete coordinate set; it owns NumPy
             broadcasting, empty-set classification, and the per-axis output
@@ -1225,8 +1226,10 @@ reduce these to 2 dimensions using the naxis kwarg.
             axis count and coerces ``origin``, an explicit WCS-002 policy
             selected by ``wcs_pix2world`` belongs here: the adapter returns one
             shape-preserving NumPy array per required output axis without
-            delegating to ``func``.  Non-empty inputs retain the existing
-            dependency direction from this Python adapter to ``func``/wcslib.
+            delegating to ``func``.  WCS-007 and WCS-008 retain the existing
+            non-empty dependency direction from this Python adapter to
+            ``func``/wcslib, which continues to own coordinate calculation and
+            transform-level validation.
 
             The WCS-001 specialization remains the two-axis empty-list case.
             WCS-002 generalizes only the all-axis empty NumPy-array case.  Its
@@ -1248,10 +1251,19 @@ reduce these to 2 dimensions using the naxis kwarg.
             broadcasting here, while compatible mixed sets retain the
             dependency on ``func`` rather than being synthesized as success.
 
+            WCS-009 makes the empty-result seam a read-only client of WCS
+            state.  It may read ``self.wcs.naxis`` to determine output
+            cardinality, but configuration, metadata, caches, and the wrapped
+            transform remain outside its ownership boundary.  The seam has no
+            state-update port: allocation either returns the conventional
+            empty arrays or propagates failure without a state commit.
+
             The required dependency order is: argument convention and axis
             count -> coercion -> NumPy broadcasting -> all-original-axes-empty
-            policy -> ``func``/wcslib.  Empty handling must not introduce a
-            dependency that bypasses either validation owner.
+            policy -> ``func``/wcslib for calls not handled by that policy.
+            Empty handling must not introduce a dependency that bypasses a
+            validation owner, changes a non-empty container boundary, or
+            writes through the WCS state boundary.
             """
             # Pseudocode obligation (GUID: WCS-002):
             # INPUT: one NumPy coordinate array for every required WCS axis,
@@ -1389,6 +1401,17 @@ reduce these to 2 dimensions using the naxis kwarg.
                     for i in range(output.shape[1])]
 
         def _return_single_array(xy, origin):
+            """Combined-coordinate-array adapter contract.
+
+            Architecture contract (GUID: WCS-007, WCS-008): this adapter owns
+            only the established final-axis shape boundary and optional sky
+            ordering adapters.  It has no empty-input policy dependency.
+            Accepted coordinates flow directly to ``func``/wcslib, which owns
+            transformation values and transform-level validation, and its
+            NumPy array result remains the public container.  Shape failures
+            remain local; downstream failures propagate across the same
+            boundary unchanged.
+            """
             # Pseudocode obligation (GUID: WCS-007, WCS-008):
             # FOR the previously supported combined-coordinate-array convention:
             #     REQUIRE the established final-axis size; otherwise RAISE the
@@ -1530,12 +1553,14 @@ reduce these to 2 dimensions using the naxis kwarg.
     def wcs_pix2world(self, *args, **kwargs):
         if self.wcs is None:
             raise ValueError("No basic WCS settings were created.")
-        # Integration ownership (GUID: WCS-002, WCS-003, WCS-005, WCS-006):
-        # this is the sole public method that may opt into the shared adapter's
-        # all-required-axes-empty policy.  The shared outer boundary retains
-        # axis-count ownership; the per-axis adapter retains compatible-shape
-        # broadcasting and all-original-axes-empty classification before it
-        # constructs WCS-ordered outputs and bypasses wcslib for that policy.
+        # Integration ownership (GUID: WCS-002, WCS-003, WCS-005, WCS-006,
+        # WCS-007, WCS-008, WCS-009): this is the sole public method that may
+        # opt into the shared adapter's all-required-axes-empty policy.  The
+        # shared outer boundary retains argument and coercion validation; the
+        # per-axis adapter retains broadcasting, classification, conventional
+        # output construction, and the read-only WCS-state boundary.  Calls
+        # outside the empty seam retain the existing adapter -> p2s/wcslib
+        # dependency for values and transform-level validation.
         return self._array_converter(
             lambda xy, o: self.wcs.p2s(xy, o)['world'],
             'output', *args, _wcs_002=True, **kwargs)
