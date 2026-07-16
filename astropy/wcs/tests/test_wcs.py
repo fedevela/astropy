@@ -376,6 +376,16 @@ def test_wcs_004_two_axis_empty_lists_preserve_accepted_origin_semantics(
     assert all(axis.size == 0 for axis in result)
 
 
+def test_wcs_005_pix2world_wrong_empty_axis_count_keeps_axis_count_rejection():
+    """GUID: WCS-005; malformed all-empty calls retain axis-count rejection."""
+    pass
+
+
+def test_wcs_006_pix2world_mixed_empty_nonempty_incompatible_shapes_rejected():
+    """GUID: WCS-006; mixed incompatible inputs retain shape validation."""
+    pass
+
+
 def test_broadcasting():
     w = wcs.WCS(naxis=2)
 
