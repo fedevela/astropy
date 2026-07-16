@@ -1282,6 +1282,23 @@ reduce these to 2 dimensions using the naxis kwarg.
             # test_wcs_003_pix2world_compatible_empty_inputs_return_all_outputs_empty.
             # VERIFY WCS-defined order with
             # test_wcs_003_pix2world_compatible_empty_inputs_return_wcs_defined_order.
+            #
+            # Pseudocode obligation (GUID: WCS-006):
+            # INPUT: the validated per-axis coordinate inputs, including any
+            #        mixture of empty and non-empty arrays.
+            # TRY to broadcast every input through the established shape check
+            # before considering an empty-transformation result.
+            # IF broadcasting fails:
+            #     RAISE the established non-broadcastable-coordinate error;
+            #     DO NOT return empty coordinate outputs.
+            # IF every originally supplied coordinate axis is empty:
+            #     CONTINUE to the all-empty transformation policy.
+            # ELSE:
+            #     DO NOT classify the call as a successful empty transformation,
+            #     even if the broadcast shape has zero elements;
+            #     CONTINUE through the established non-empty transform path.
+            # VERIFY the incompatible-shape failure path with
+            # test_wcs_006_pix2world_mixed_empty_nonempty_incompatible_shapes_rejected.
             try:
                 axes = np.broadcast_arrays(*axes)
             except ValueError:
@@ -1345,6 +1362,20 @@ reduce these to 2 dimensions using the naxis kwarg.
 
             return _return_list_of_arrays(axes, origin)
 
+        # Pseudocode obligation (GUID: WCS-005):
+        # INPUT: the complete positional argument sequence for wcs_pix2world.
+        # IF the call uses the combined-coordinate-array convention:
+        #     REQUIRE exactly the coordinate array and origin, then continue
+        #     through the established combined-array shape validation.
+        # ELSE IF the call supplies one coordinate value per axis:
+        #     REQUIRE exactly self.naxis coordinate inputs followed by origin,
+        #     then continue through coercion and broadcasting.
+        # ELSE:
+        #     RAISE the established coordinate-axis count error before
+        #     inspecting whether any supplied coordinate input is empty;
+        #     DO NOT enter the successful empty-transformation path.
+        # VERIFY this failure path with
+        # test_wcs_005_pix2world_wrong_empty_axis_count_keeps_axis_count_rejection.
         raise TypeError(
             "WCS projection has {0} dimensions, so expected 2 (an Nx{0} array "
             "and the origin argument) or {1} arguments (the position in each "
