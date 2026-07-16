@@ -297,24 +297,71 @@ def test_wcs_002_all_axis_empty_numpy_arrays_preserve_conventional_output_shapes
     assert all(axis.shape == (2, 0, 3) for axis in result)
 
 
-def test_wcs_003_pix2world_compatible_empty_inputs_accepted_origin_succeeds():
+@pytest.mark.parametrize('origin', [0, 1])
+def test_wcs_003_pix2world_compatible_empty_inputs_accepted_origin_succeeds(
+        origin):
     """GUID: WCS-003; valid multi-axis empty-input call succeeds."""
-    assert True
+    w = wcs.WCS(naxis=3)
+    x = np.empty((2, 0, 1))
+    y = np.empty((1, 0, 3))
+    z = np.empty((2, 0, 3))
+
+    w.wcs_pix2world(x, y, z, origin)
 
 
 def test_wcs_003_pix2world_compatible_empty_inputs_return_output_per_wcs_axis():
     """GUID: WCS-003; valid multi-axis output count follows its WCS axes."""
-    assert True
+    w = wcs.WCS(naxis=3)
+    inputs = [np.empty((2, 0, 1)),
+              np.empty((1, 0, 3)),
+              np.empty((2, 0, 3))]
+
+    result = w.wcs_pix2world(*(inputs + [0]))
+
+    assert len(result) == w.wcs.naxis
 
 
 def test_wcs_003_pix2world_compatible_empty_inputs_return_all_outputs_empty():
     """GUID: WCS-003; valid multi-axis WCS returns every output empty."""
-    assert True
+    w = wcs.WCS(naxis=3)
+    inputs = [np.empty((2, 0, 1)),
+              np.empty((1, 0, 3)),
+              np.empty((2, 0, 3))]
+
+    result = w.wcs_pix2world(*(inputs + [0]))
+
+    assert all(axis.shape == (2, 0, 3) for axis in result)
+    assert all(axis.size == 0 for axis in result)
 
 
-def test_wcs_003_pix2world_compatible_empty_inputs_return_wcs_defined_order():
+def test_wcs_003_pix2world_compatible_empty_inputs_return_wcs_defined_order(
+        monkeypatch):
     """GUID: WCS-003; valid multi-axis outputs retain WCS-defined order."""
-    assert True
+    w = wcs.WCS(naxis=3)
+    w.wcs.ctype = ['FREQ', 'DEC--TAN', 'RA---TAN']
+    inputs = [np.empty((2, 0, 1)),
+              np.empty((1, 0, 3)),
+              np.empty((2, 0, 3))]
+    numpy_empty = np.empty
+    created_outputs = []
+
+    class AxisOrderedEmpty(np.ndarray):
+        pass
+
+    def create_ordered_empty(*args, **kwargs):
+        output = numpy_empty(*args, **kwargs).view(AxisOrderedEmpty)
+        output.axis_index = len(created_outputs)
+        created_outputs.append(output)
+        return output
+
+    monkeypatch.setattr(np, 'empty', create_ordered_empty)
+
+    result = w.wcs_pix2world(*(inputs + [0]))
+
+    ordered_outputs = list(zip(w.wcs.ctype,
+                               [output.axis_index for output in result]))
+    assert ordered_outputs == [
+        ('FREQ', 0), ('DEC--TAN', 1), ('RA---TAN', 2)]
 
 
 @pytest.mark.parametrize('origin', [0, 1])

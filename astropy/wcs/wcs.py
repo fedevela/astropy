@@ -1288,10 +1288,12 @@ reduce these to 2 dimensions using the naxis kwarg.
                 raise ValueError(
                     "Coordinate arrays are not broadcastable to each other")
 
-            # GUID: WCS-001, WCS-002, WCS-004
+            # GUID: WCS-001, WCS-002, WCS-003, WCS-004
             all_axes_empty = all(axis.size == 0 for axis in axes)
             if all_axes_empty and (len(axes) == 2 or _wcs_002):
-                return [np.empty(axis.shape, dtype=float) for axis in axes]
+                output_shape = axes[0].shape
+                return [np.empty(output_shape, dtype=float)
+                        for _ in range(self.wcs.naxis)]
 
             xy = np.hstack([x.reshape((x.size, 1)) for x in axes])
 
