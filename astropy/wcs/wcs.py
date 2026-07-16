@@ -1313,6 +1313,40 @@ reduce these to 2 dimensions using the naxis kwarg.
             #     CONTINUE through the established non-empty transform path.
             # VERIFY the incompatible-shape failure path with
             # test_wcs_006_pix2world_mixed_empty_nonempty_incompatible_shapes_rejected.
+            #
+            # Pseudocode obligation (GUID: WCS-007):
+            # INPUT: a previously supported, valid, non-empty per-axis
+            #        coordinate set and its accepted origin.
+            # VALIDATE and broadcast through the established path above.
+            # IF at least one originally supplied coordinate axis is non-empty:
+            #     BUILD the coordinate matrix in the supplied WCS-axis order.
+            #     INVOKE the existing transform exactly as before, with the
+            #     same coordinate matrix and origin.
+            #     IF RA/Dec output normalization was requested:
+            #         APPLY the established longitude/latitude ordering only.
+            #     FOR each transformed output column, in existing output order:
+            #         RESHAPE it to the common broadcast input shape.
+            #     RETURN the established list of per-axis NumPy arrays.
+            #     DO NOT substitute empty outputs or alter values, ordering,
+            #     dtype/container selection, or shape conventions.
+            # VERIFY coordinate values with
+            # test_wcs_007_valid_nonempty_pix2world_retains_coordinate_values.
+            # VERIFY output ordering with
+            # test_wcs_007_valid_nonempty_pix2world_retains_output_ordering.
+            # VERIFY containers with
+            # test_wcs_007_valid_nonempty_pix2world_retains_container_conventions.
+            #
+            # Pseudocode obligation (GUID: WCS-008):
+            # INPUT: an invalid, non-empty per-axis coordinate call.
+            # APPLY existing argument-count and coercion validation before
+            # entering this adapter, then apply existing broadcasting here.
+            # IF any validation stage rejects the call:
+            #     RAISE that stage's established exception and message;
+            #     DO NOT retry, reclassify the call as empty, or return output.
+            # ELSE invoke the existing transform and PROPAGATE any transform
+            # validation failure unchanged to the caller.
+            # VERIFY the preserved failure with
+            # test_wcs_008_invalid_nonempty_pix2world_retains_validation_error.
             original_axes = axes
             try:
                 axes = np.broadcast_arrays(*axes)
@@ -1323,6 +1357,21 @@ reduce these to 2 dimensions using the naxis kwarg.
             # GUID: WCS-001, WCS-002, WCS-003, WCS-004, WCS-006
             all_axes_empty = all(axis.size == 0 for axis in original_axes)
             if all_axes_empty and (len(axes) == 2 or _wcs_002):
+                # Pseudocode obligation (GUID: WCS-009):
+                # PRECONDITION: configuration and metadata belong to the valid
+                #               WCS supplied to this empty transformation.
+                # TREAT self.wcs and all WCS configuration/metadata reachable
+                # from it as read-only throughout the empty-input branch.
+                # DERIVE output cardinality only by reading the WCS axis count.
+                # ALLOCATE shape-compatible empty coordinate outputs.
+                # RETURN them without invoking the transform, assigning WCS
+                # configuration, updating metadata, or committing cached state.
+                # ON allocation failure, PROPAGATE the failure without changing
+                # WCS configuration or metadata.
+                # VERIFY configuration immutability with
+                # test_wcs_009_empty_pix2world_leaves_wcs_configuration_unchanged.
+                # VERIFY metadata immutability with
+                # test_wcs_009_compatible_empty_pix2world_leaves_wcs_metadata_unchanged.
                 output_shape = axes[0].shape
                 return [np.empty(output_shape, dtype=float)
                         for _ in range(self.wcs.naxis)]
@@ -1340,6 +1389,15 @@ reduce these to 2 dimensions using the naxis kwarg.
                     for i in range(output.shape[1])]
 
         def _return_single_array(xy, origin):
+            # Pseudocode obligation (GUID: WCS-007, WCS-008):
+            # FOR the previously supported combined-coordinate-array convention:
+            #     REQUIRE the established final-axis size; otherwise RAISE the
+            #     established shape error without invoking the transform.
+            #     PASS valid non-empty coordinates and origin to the existing
+            #     transform without changing their values or column order.
+            #     APPLY only the established optional RA/Dec normalization.
+            #     RETURN the transform's established NumPy array container.
+            #     PROPAGATE transform validation failures unchanged.
             if xy.shape[-1] != self.naxis:
                 raise ValueError(
                     "When providing two arguments, the array must be "
