@@ -1206,159 +1206,13 @@ reduce these to 2 dimensions using the naxis kwarg.
             return out
 
     def _array_converter(self, func, sky, *args, ra_dec_order=False,
-                         _wcs_002=False):
+                         _preserve_empty_shape=False):
         """
         A helper function to support reading either a pair of arrays
         or a single Nx2 array.
         """
 
         def _return_list_of_arrays(axes, origin):
-            """Coordinate-list adapter and empty-input integration seam.
-
-            Architecture contract
-            (GUID: WCS-001, WCS-002, WCS-003, WCS-004, WCS-005, WCS-006,
-            WCS-007, WCS-008, WCS-009): the outer ``_array_converter`` owns
-            argument-convention, axis-count, coordinate coercion, and origin
-            validation.  This per-axis adapter is entered only after that
-            boundary accepts a complete coordinate set; it owns NumPy
-            broadcasting, empty-set classification, and the per-axis output
-            container and shape convention.  After the caller validates the
-            axis count and coerces ``origin``, an explicit WCS-002 policy
-            selected by ``wcs_pix2world`` belongs here: the adapter returns one
-            shape-preserving NumPy array per required output axis without
-            delegating to ``func``.  WCS-007 and WCS-008 retain the existing
-            non-empty dependency direction from this Python adapter to
-            ``func``/wcslib, which continues to own coordinate calculation and
-            transform-level validation.
-
-            The WCS-001 specialization remains the two-axis empty-list case.
-            WCS-002 generalizes only the all-axis empty NumPy-array case.  Its
-            activation must remain an explicit caller-to-adapter contract so
-            this shared helper does not extend the behavior to other methods.
-            WCS-003 specializes that policy for mutually shape-compatible empty
-            inputs on a valid multi-axis WCS: this adapter owns construction of
-            one empty output per WCS output axis and preserves the transform's
-            WCS-defined axis order in the established per-axis container.
-
-            The single combined-coordinate-array convention remains outside
-            this seam.  WCS-005 keeps malformed per-axis calls at the outer
-            axis-count boundary, before any empty-input policy can observe
-            them.  WCS-006 keeps mixed empty/non-empty coordinate sets on this
-            adapter's established broadcast/transform route: successful
-            broadcasting is required before classification, and only a set
-            whose originally supplied axes are all empty may enter the empty
-            result seam.  Thus incompatible shapes remain owned by NumPy
-            broadcasting here, while compatible mixed sets retain the
-            dependency on ``func`` rather than being synthesized as success.
-
-            WCS-009 makes the empty-result seam a read-only client of WCS
-            state.  It may read ``self.wcs.naxis`` to determine output
-            cardinality, but configuration, metadata, caches, and the wrapped
-            transform remain outside its ownership boundary.  The seam has no
-            state-update port: allocation either returns the conventional
-            empty arrays or propagates failure without a state commit.
-
-            The required dependency order is: argument convention and axis
-            count -> coercion -> NumPy broadcasting -> all-original-axes-empty
-            policy -> ``func``/wcslib for calls not handled by that policy.
-            Empty handling must not introduce a dependency that bypasses a
-            validation owner, changes a non-empty container boundary, or
-            writes through the WCS state boundary.
-            """
-            # Pseudocode obligation (GUID: WCS-002):
-            # INPUT: one NumPy coordinate array for every required WCS axis,
-            #        plus an origin already accepted and coerced by the caller.
-            # TRY to broadcast all axis arrays to the established common shape.
-            # IF broadcasting fails:
-            #     RAISE the established non-broadcastable-coordinate error.
-            # IF every broadcast input axis is empty:
-            #     DO NOT hand the empty coordinate matrix to the transform.
-            #     FOR each required output axis, in axis order:
-            #         CREATE an empty NumPy array with the broadcast input shape
-            #         and the numeric dtype used by coordinate conversion.
-            #     RETURN the arrays in the established per-axis container.
-            # ELSE:
-            #     CONTINUE through the existing transform and reshape flow.
-            # OUTPUT: one NumPy array per output axis; for the all-empty branch,
-            #         every array is empty and preserves the common input shape.
-            #
-            # Pseudocode obligation (GUID: WCS-003):
-            # PRECONDITION: the WCS is valid and multi-axis; the call supplies
-            #               one empty coordinate input per required input axis
-            #               and an accepted origin.
-            # COERCE each coordinate input and the origin through the existing
-            # validation path.
-            # IF the coordinate-input count does not match the WCS input count:
-            #     RAISE the established argument-count error.
-            # TRY to broadcast all coordinate inputs to one common shape.
-            # IF their empty shapes are not mutually broadcast-compatible:
-            #     RAISE the established non-broadcastable-coordinate error.
-            # IF every broadcast coordinate input is empty:
-            #     FOR each WCS output axis, in WCS-defined order:
-            #         CREATE one empty coordinate output with the common shape.
-            #     RETURN the ordered collection without invoking the transform.
-            # ELSE:
-            #     CONTINUE through the existing non-empty transformation flow;
-            #     mixed empty and non-empty behavior is outside WCS-003.
-            # VERIFY accepted-origin success with
-            # test_wcs_003_pix2world_compatible_empty_inputs_accepted_origin_succeeds.
-            # VERIFY output cardinality with
-            # test_wcs_003_pix2world_compatible_empty_inputs_return_output_per_wcs_axis.
-            # VERIFY every output is empty with
-            # test_wcs_003_pix2world_compatible_empty_inputs_return_all_outputs_empty.
-            # VERIFY WCS-defined order with
-            # test_wcs_003_pix2world_compatible_empty_inputs_return_wcs_defined_order.
-            #
-            # Pseudocode obligation (GUID: WCS-006):
-            # INPUT: the validated per-axis coordinate inputs, including any
-            #        mixture of empty and non-empty arrays.
-            # TRY to broadcast every input through the established shape check
-            # before considering an empty-transformation result.
-            # IF broadcasting fails:
-            #     RAISE the established non-broadcastable-coordinate error;
-            #     DO NOT return empty coordinate outputs.
-            # IF every originally supplied coordinate axis is empty:
-            #     CONTINUE to the all-empty transformation policy.
-            # ELSE:
-            #     DO NOT classify the call as a successful empty transformation,
-            #     even if the broadcast shape has zero elements;
-            #     CONTINUE through the established non-empty transform path.
-            # VERIFY the incompatible-shape failure path with
-            # test_wcs_006_pix2world_mixed_empty_nonempty_incompatible_shapes_rejected.
-            #
-            # Pseudocode obligation (GUID: WCS-007):
-            # INPUT: a previously supported, valid, non-empty per-axis
-            #        coordinate set and its accepted origin.
-            # VALIDATE and broadcast through the established path above.
-            # IF at least one originally supplied coordinate axis is non-empty:
-            #     BUILD the coordinate matrix in the supplied WCS-axis order.
-            #     INVOKE the existing transform exactly as before, with the
-            #     same coordinate matrix and origin.
-            #     IF RA/Dec output normalization was requested:
-            #         APPLY the established longitude/latitude ordering only.
-            #     FOR each transformed output column, in existing output order:
-            #         RESHAPE it to the common broadcast input shape.
-            #     RETURN the established list of per-axis NumPy arrays.
-            #     DO NOT substitute empty outputs or alter values, ordering,
-            #     dtype/container selection, or shape conventions.
-            # VERIFY coordinate values with
-            # test_wcs_007_valid_nonempty_pix2world_retains_coordinate_values.
-            # VERIFY output ordering with
-            # test_wcs_007_valid_nonempty_pix2world_retains_output_ordering.
-            # VERIFY containers with
-            # test_wcs_007_valid_nonempty_pix2world_retains_container_conventions.
-            #
-            # Pseudocode obligation (GUID: WCS-008):
-            # INPUT: an invalid, non-empty per-axis coordinate call.
-            # APPLY existing argument-count and coercion validation before
-            # entering this adapter, then apply existing broadcasting here.
-            # IF any validation stage rejects the call:
-            #     RAISE that stage's established exception and message;
-            #     DO NOT retry, reclassify the call as empty, or return output.
-            # ELSE invoke the existing transform and PROPAGATE any transform
-            # validation failure unchanged to the caller.
-            # VERIFY the preserved failure with
-            # test_wcs_008_invalid_nonempty_pix2world_retains_validation_error.
             original_axes = axes
             try:
                 axes = np.broadcast_arrays(*axes)
@@ -1366,27 +1220,12 @@ reduce these to 2 dimensions using the naxis kwarg.
                 raise ValueError(
                     "Coordinate arrays are not broadcastable to each other")
 
-            # GUID: WCS-001, WCS-002, WCS-003, WCS-004, WCS-006
-            all_axes_empty = all(axis.size == 0 for axis in original_axes)
-            if all_axes_empty and (len(axes) == 2 or _wcs_002):
-                # Pseudocode obligation (GUID: WCS-009):
-                # PRECONDITION: configuration and metadata belong to the valid
-                #               WCS supplied to this empty transformation.
-                # TREAT self.wcs and all WCS configuration/metadata reachable
-                # from it as read-only throughout the empty-input branch.
-                # DERIVE output cardinality only by reading the WCS axis count.
-                # ALLOCATE shape-compatible empty coordinate outputs.
-                # RETURN them without invoking the transform, assigning WCS
-                # configuration, updating metadata, or committing cached state.
-                # ON allocation failure, PROPAGATE the failure without changing
-                # WCS configuration or metadata.
-                # VERIFY configuration immutability with
-                # test_wcs_009_empty_pix2world_leaves_wcs_configuration_unchanged.
-                # VERIFY metadata immutability with
-                # test_wcs_009_compatible_empty_pix2world_leaves_wcs_metadata_unchanged.
-                output_shape = axes[0].shape
-                return [np.empty(output_shape, dtype=float)
-                        for _ in range(self.wcs.naxis)]
+            if any(axis.size == 0 for axis in original_axes):
+                if (_preserve_empty_shape and
+                        all(axis.size == 0 for axis in original_axes)):
+                    return [np.empty(axes[0].shape, dtype=float)
+                            for _ in range(self.wcs.naxis)]
+                return original_axes
 
             xy = np.hstack([x.reshape((x.size, 1)) for x in axes])
 
@@ -1401,30 +1240,12 @@ reduce these to 2 dimensions using the naxis kwarg.
                     for i in range(output.shape[1])]
 
         def _return_single_array(xy, origin):
-            """Combined-coordinate-array adapter contract.
-
-            Architecture contract (GUID: WCS-007, WCS-008): this adapter owns
-            only the established final-axis shape boundary and optional sky
-            ordering adapters.  It has no empty-input policy dependency.
-            Accepted coordinates flow directly to ``func``/wcslib, which owns
-            transformation values and transform-level validation, and its
-            NumPy array result remains the public container.  Shape failures
-            remain local; downstream failures propagate across the same
-            boundary unchanged.
-            """
-            # Pseudocode obligation (GUID: WCS-007, WCS-008):
-            # FOR the previously supported combined-coordinate-array convention:
-            #     REQUIRE the established final-axis size; otherwise RAISE the
-            #     established shape error without invoking the transform.
-            #     PASS valid non-empty coordinates and origin to the existing
-            #     transform without changing their values or column order.
-            #     APPLY only the established optional RA/Dec normalization.
-            #     RETURN the transform's established NumPy array container.
-            #     PROPAGATE transform validation failures unchanged.
             if xy.shape[-1] != self.naxis:
                 raise ValueError(
                     "When providing two arguments, the array must be "
                     "of shape (N, {0})".format(self.naxis))
+            if xy.size == 0:
+                return xy
             if ra_dec_order and sky == 'input':
                 xy = self._denormalize_sky(xy)
             result = func(xy, origin)
@@ -1458,20 +1279,6 @@ reduce these to 2 dimensions using the naxis kwarg.
 
             return _return_list_of_arrays(axes, origin)
 
-        # Pseudocode obligation (GUID: WCS-005):
-        # INPUT: the complete positional argument sequence for wcs_pix2world.
-        # IF the call uses the combined-coordinate-array convention:
-        #     REQUIRE exactly the coordinate array and origin, then continue
-        #     through the established combined-array shape validation.
-        # ELSE IF the call supplies one coordinate value per axis:
-        #     REQUIRE exactly self.naxis coordinate inputs followed by origin,
-        #     then continue through coercion and broadcasting.
-        # ELSE:
-        #     RAISE the established coordinate-axis count error before
-        #     inspecting whether any supplied coordinate input is empty;
-        #     DO NOT enter the successful empty-transformation path.
-        # VERIFY this failure path with
-        # test_wcs_005_pix2world_wrong_empty_axis_count_keeps_axis_count_rejection.
         raise TypeError(
             "WCS projection has {0} dimensions, so expected 2 (an Nx{0} array "
             "and the origin argument) or {1} arguments (the position in each "
@@ -1553,17 +1360,9 @@ reduce these to 2 dimensions using the naxis kwarg.
     def wcs_pix2world(self, *args, **kwargs):
         if self.wcs is None:
             raise ValueError("No basic WCS settings were created.")
-        # Integration ownership (GUID: WCS-002, WCS-003, WCS-005, WCS-006,
-        # WCS-007, WCS-008, WCS-009): this is the sole public method that may
-        # opt into the shared adapter's all-required-axes-empty policy.  The
-        # shared outer boundary retains argument and coercion validation; the
-        # per-axis adapter retains broadcasting, classification, conventional
-        # output construction, and the read-only WCS-state boundary.  Calls
-        # outside the empty seam retain the existing adapter -> p2s/wcslib
-        # dependency for values and transform-level validation.
         return self._array_converter(
             lambda xy, o: self.wcs.p2s(xy, o)['world'],
-            'output', *args, _wcs_002=True, **kwargs)
+            'output', *args, _preserve_empty_shape=True, **kwargs)
     wcs_pix2world.__doc__ = """
         Transforms pixel coordinates to world coordinates by doing
         only the basic `wcslib`_ transformation.
