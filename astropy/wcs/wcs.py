@@ -1218,6 +1218,20 @@ reduce these to 2 dimensions using the naxis kwarg.
                 raise ValueError(
                     "Coordinate arrays are not broadcastable to each other")
 
+            # GUID: WCS-001, WCS-004 -- two-axis empty-list transformation.
+            # IF exactly two broadcast coordinate axes are present AND both
+            # axes contain zero coordinates:
+            #   RETURN exactly two empty coordinate arrays, each preserving
+            #   the broadcast input shape.
+            #   DO NOT hand the empty coordinate matrix to ``func``/wcslib,
+            #   so no InconsistentAxisTypesError can originate there.
+            #   DO NOT reinterpret or branch on ``origin``; reach this flow
+            #   only after the caller's existing origin acceptance and
+            #   integer-coercion path has completed.
+            # OTHERWISE:
+            #   CONTINUE through the existing transformation and output-split
+            #   flow without changing its behavior or failure paths.
+
             xy = np.hstack([x.reshape((x.size, 1)) for x in axes])
 
             if ra_dec_order and sky == 'input':
