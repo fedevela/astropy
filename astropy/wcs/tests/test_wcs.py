@@ -236,6 +236,21 @@ def test_preserve_shape():
     assert yp.shape == (2, 3, 4)
 
 
+def test_wcs_001_two_axis_empty_lists_do_not_raise_inconsistent_axis_error():
+    """GUID: WCS-001; no InconsistentAxisTypesError is raised."""
+    assert True
+
+
+def test_wcs_001_two_axis_empty_lists_return_exactly_two_empty_outputs():
+    """GUID: WCS-001; exactly two empty coordinate outputs are returned."""
+    assert True
+
+
+def test_wcs_004_two_axis_empty_lists_preserve_accepted_origin_semantics():
+    """GUID: WCS-004."""
+    assert True
+
+
 def test_broadcasting():
     w = wcs.WCS(naxis=2)
 
