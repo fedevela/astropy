@@ -1248,6 +1248,33 @@ reduce these to 2 dimensions using the naxis kwarg.
             #     CONTINUE through the existing transform and reshape flow.
             # OUTPUT: one NumPy array per output axis; for the all-empty branch,
             #         every array is empty and preserves the common input shape.
+            #
+            # Pseudocode obligation (GUID: WCS-003):
+            # PRECONDITION: the WCS is valid and multi-axis; the call supplies
+            #               one empty coordinate input per required input axis
+            #               and an accepted origin.
+            # COERCE each coordinate input and the origin through the existing
+            # validation path.
+            # IF the coordinate-input count does not match the WCS input count:
+            #     RAISE the established argument-count error.
+            # TRY to broadcast all coordinate inputs to one common shape.
+            # IF their empty shapes are not mutually broadcast-compatible:
+            #     RAISE the established non-broadcastable-coordinate error.
+            # IF every broadcast coordinate input is empty:
+            #     FOR each WCS output axis, in WCS-defined order:
+            #         CREATE one empty coordinate output with the common shape.
+            #     RETURN the ordered collection without invoking the transform.
+            # ELSE:
+            #     CONTINUE through the existing non-empty transformation flow;
+            #     mixed empty and non-empty behavior is outside WCS-003.
+            # VERIFY accepted-origin success with
+            # test_wcs_003_pix2world_compatible_empty_inputs_accepted_origin_succeeds.
+            # VERIFY output cardinality with
+            # test_wcs_003_pix2world_compatible_empty_inputs_return_output_per_wcs_axis.
+            # VERIFY every output is empty with
+            # test_wcs_003_pix2world_compatible_empty_inputs_return_all_outputs_empty.
+            # VERIFY WCS-defined order with
+            # test_wcs_003_pix2world_compatible_empty_inputs_return_wcs_defined_order.
             try:
                 axes = np.broadcast_arrays(*axes)
             except ValueError:
