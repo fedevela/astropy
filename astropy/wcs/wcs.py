@@ -1205,7 +1205,8 @@ reduce these to 2 dimensions using the naxis kwarg.
             out[:, 1] = sky[:, self.wcs.lat]
             return out
 
-    def _array_converter(self, func, sky, *args, ra_dec_order=False):
+    def _array_converter(self, func, sky, *args, ra_dec_order=False,
+                         _wcs_002=False):
         """
         A helper function to support reading either a pair of arrays
         or a single Nx2 array.
@@ -1253,8 +1254,9 @@ reduce these to 2 dimensions using the naxis kwarg.
                 raise ValueError(
                     "Coordinate arrays are not broadcastable to each other")
 
-            # GUID: WCS-001, WCS-004
-            if len(axes) == 2 and all(axis.size == 0 for axis in axes):
+            # GUID: WCS-001, WCS-002, WCS-004
+            all_axes_empty = all(axis.size == 0 for axis in axes)
+            if all_axes_empty and (len(axes) == 2 or _wcs_002):
                 return [np.empty(axis.shape, dtype=float) for axis in axes]
 
             xy = np.hstack([x.reshape((x.size, 1)) for x in axes])
@@ -1394,7 +1396,7 @@ reduce these to 2 dimensions using the naxis kwarg.
         # and bypassing the wcslib dependency for that policy.
         return self._array_converter(
             lambda xy, o: self.wcs.p2s(xy, o)['world'],
-            'output', *args, **kwargs)
+            'output', *args, _wcs_002=True, **kwargs)
     wcs_pix2world.__doc__ = """
         Transforms pixel coordinates to world coordinates by doing
         only the basic `wcslib`_ transformation.

@@ -254,24 +254,47 @@ def test_wcs_001_two_axis_empty_lists_return_exactly_two_empty_outputs():
     assert all(axis.shape == (0,) for axis in result)
 
 
-def test_wcs_002_all_axis_empty_numpy_arrays_with_accepted_origin_call_succeeds():
+@pytest.mark.parametrize('origin', [0, 1])
+def test_wcs_002_all_axis_empty_numpy_arrays_with_accepted_origin_call_succeeds(
+        origin):
     """GUID: WCS-002; wcs_pix2world accepts empty arrays for every axis."""
-    assert True
+    w = wcs.WCS(naxis=3)
+
+    w.wcs_pix2world(np.array([]), np.array([]), np.array([]), origin)
 
 
 def test_wcs_002_all_axis_empty_numpy_arrays_return_each_output_empty():
     """GUID: WCS-002; every returned coordinate output is empty."""
-    assert True
+    w = wcs.WCS(naxis=3)
+
+    result = w.wcs_pix2world(
+        np.array([]), np.array([]), np.array([]), 0)
+
+    assert len(result) == 3
+    assert all(axis.size == 0 for axis in result)
 
 
 def test_wcs_002_all_axis_empty_numpy_arrays_return_numpy_containers():
     """GUID: WCS-002; outputs follow the established NumPy container convention."""
-    assert True
+    w = wcs.WCS(naxis=3)
+
+    result = w.wcs_pix2world(
+        np.array([]), np.array([]), np.array([]), 0)
+
+    assert isinstance(result, list)
+    assert all(isinstance(axis, np.ndarray) for axis in result)
 
 
 def test_wcs_002_all_axis_empty_numpy_arrays_preserve_conventional_output_shapes():
     """GUID: WCS-002; outputs follow established empty-input shape conventions."""
-    assert True
+    w = wcs.WCS(naxis=3)
+    x = np.empty((2, 0, 1))
+    y = np.empty((1, 0, 3))
+    z = np.empty((2, 0, 3))
+
+    result = w.wcs_pix2world(x, y, z, 0)
+
+    assert all(axis.shape == (2, 0, 3) for axis in result)
 
 
 @pytest.mark.parametrize('origin', [0, 1])
